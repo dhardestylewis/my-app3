@@ -1,6 +1,8 @@
 "use client";
 import { useState, useMemo } from 'react';
-import { useGameStore } from '@/store/useGameStore';
+import { useFloorStore, FloorStatus } from '@/stores/useFloorStore';
+import { useGameFlowStore } from '@/stores/useGameFlowStore';
+import { usePlayersStore } from '@/stores/usePlayersStore';
 import { Button } from "@/components/ui/button";
 import { 
   Layers, 
@@ -14,16 +16,16 @@ import {
   X,
   Info
 } from 'lucide-react';
-import { FloorState } from '@/data/types';
 import { motion, AnimatePresence } from 'framer-motion';
+import { RECALL_MAX_FLOOR } from '@/data/constants';
 
 const FloorTimeline = () => {
-  // State from store
-  const floors = useGameStore(state => state.floors);
-  const currentFloor = useGameStore(state => state.currentFloor);
-  const useRecallToken = useGameStore(state => state.useRecallToken);
-  const players = useGameStore(state => state.players);
-  const currentPlayerIndex = useGameStore(state => state.currentPlayerIndex);
+  // State from stores
+  const floors = useFloorStore(state => state.floors);
+  const currentFloor = useFloorStore(state => state.currentFloor);
+  const useRecallToken = useGameFlowStore(state => state.useRecallToken);
+  const players = usePlayersStore(state => state.players);
+  const currentPlayerIndex = usePlayersStore(state => state.currentPlayerIndex);
   
   // Local state
   const [hoveredFloor, setHoveredFloor] = useState<number | null>(null);
@@ -39,8 +41,6 @@ const FloorTimeline = () => {
   const hasRecallTokens = useMemo(() => 
     (currentPlayer?.recallTokens || 0) > 0,
   [currentPlayer?.recallTokens]);
-  
-  const RECALL_MAX_FLOOR = 12; // Same as in store
   
   // Calculate visible floors based on view mode and current floor
   const visibleFloors = useMemo(() => {
@@ -75,7 +75,11 @@ const FloorTimeline = () => {
   };
   
   // Get appropriate styling classes based on floor status
-  const getFloorClasses = (floor: FloorState) => {
+  interface FloorClassesProps {
+    floor: Floor;
+  }
+
+  const getFloorClasses = ({ floor }: FloorClassesProps): string => {
     const baseClasses = "flex items-center justify-center rounded-md border shadow-md transition-all duration-200";
     
     // Size classes based on view mode
@@ -85,9 +89,9 @@ const FloorTimeline = () => {
     
     // Color classes based on status
     let statusClasses = "";
-    if (floor.status === 'agreed') {
+    if (floor.status === FloorStatus.Agreed) {
       statusClasses = "bg-emerald-600 border-emerald-400 text-white";
-    } else if (floor.status === 'reopened') {
+    } else if (floor.status === FloorStatus.Reopened) {
       statusClasses = "bg-yellow-600 border-yellow-400 text-white";
     } else if (floor.floorNumber === currentFloor) {
       statusClasses = "bg-blue-600 border-blue-400 text-white animate-pulse";
@@ -106,9 +110,27 @@ const FloorTimeline = () => {
   };
   
   // Get tooltip content for a floor
-  const getTooltipContent = (floor: FloorState) => {
+  interface Floor {
+    floorNumber: number;
+    status: FloorStatus;
+    winnerCard?: WinnerCard;
+    committedBy?: string;
+    proposalA?: Proposal;
+    proposalB?: Proposal;
+  }
+
+  interface WinnerCard {
+    name: string;
+    netScoreImpact: number;
+  }
+
+  interface Proposal {
+    name: string;
+  }
+
+  const getTooltipContent = (floor: Floor) => {
     // For completed floors
-    if (floor.status === 'agreed' && floor.winnerCard) {
+    if (floor.status === FloorStatus.Agreed && floor.winnerCard) {
       return (
         <div className="w-64 p-3">
           <div className="flex justify-between items-start mb-2">
@@ -191,7 +213,7 @@ const FloorTimeline = () => {
     }
     
     // For reopened floors
-    if (floor.status === 'reopened') {
+    if (floor.status === FloorStatus.Reopened) {
       return (
         <div className="w-56 p-3">
           <div className="flex justify-between items-start mb-2">
@@ -294,7 +316,16 @@ const FloorTimeline = () => {
             >
               {/* Floor tile */}
               <button
-                className={getFloorClasses(floor)}
+                className={getFloorClasses({ 
+                  floor: { 
+                    ...floor, 
+                    committedBy: floor.committedBy ?? undefined,
+                    winnerCard: floor.winnerCard ? {
+                      ...floor.winnerCard,
+                      netScoreImpact: (floor.winnerCard as any).netScoreImpact ?? 0
+                    } : undefined
+                  } 
+                })}
                 onClick={() => {
                   // Toggle tooltip on/off when clicked
                   setActiveTooltip(activeTooltip === floor.floorNumber ? null : floor.floorNumber);
@@ -305,7 +336,7 @@ const FloorTimeline = () => {
                 {floor.floorNumber}
                 
                 {/* Small indicator for floor with cards */}
-                {floor.status === 'agreed' && (
+                {floor.status === FloorStatus.Agreed && (
                   <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-white rounded-full border border-slate-700"></div>
                 )}
                 
@@ -320,9 +351,9 @@ const FloorTimeline = () => {
               {/* Tooltip */}
               <AnimatePresence>
                 {activeTooltip === floor.floorNumber && (
-                  <motion.div 
-                    initial={{ opacity: 0, y: tooltipPosition === 'top' ? -10 : 10 }}
-                    animate={{ opacity: 1, y: 0 }}
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.9 }}
                     transition={{ duration: 0.2 }}
                     className={`absolute z-50 ${
@@ -330,7 +361,24 @@ const FloorTimeline = () => {
                     } left-0`}
                   >
                     <div className="bg-slate-800 border border-slate-600 rounded-md shadow-xl">
-                      {getTooltipContent(floor)}
+                      {getTooltipContent({ 
+                        ...floor, 
+                        committedBy: floor.committedBy ?? undefined,
+                        winnerCard: floor.winnerCard ? {
+                          ...floor.winnerCard,
+                          netScoreImpact: (floor.winnerCard as any).netScoreImpact ?? 0
+                        } : undefined
+                      })}
+                    </div>
+                    <div className="bg-slate-800 border border-slate-600 rounded-md shadow-xl">
+                      {getTooltipContent({ 
+                        ...floor, 
+                        committedBy: floor.committedBy ?? undefined,
+                        winnerCard: floor.winnerCard ? {
+                          ...floor.winnerCard,
+                          netScoreImpact: (floor.winnerCard as any).netScoreImpact ?? 0
+                        } : undefined
+                      })}
                     </div>
                     
                     {/* Tooltip arrow */}

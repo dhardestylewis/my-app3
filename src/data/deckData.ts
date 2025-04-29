@@ -47,6 +47,13 @@ const CASH_FLOW_PER_SQFT = {
     COMMUNITY_MARKET: 15,       // Market rate community spaces
 };
 
+// --- IMAGE HANDLING CONFIGURATION ---
+/**
+ * Default image path used when a card's specified image is missing or invalid.
+ * Ensure this image exists in your `/public` directory.
+ */
+export const DEFAULT_CARD_IMAGE_PATH = "/cards/default-card.png";
+
 // ------------------------------
 // CORE CARD DEFINITIONS
 // ------------------------------

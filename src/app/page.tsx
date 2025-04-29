@@ -1,9 +1,28 @@
-import CardGame from "../components/card-game"
+// src/app/page.tsx
+import { getValidatedImagePath } from "@/lib/server/imageValidation";
+import { deckCards } from "@/data/deckData";
+// import the server component that does the checks
+import GamePage from "./game/page";
+// import the client boundary
+import GameLayout from "./game/layout";
 
-export default function Home() {
+// export your metadata here (server-only)
+export const metadata = {
+  title: "Urban Development Game",
+  description: "A strategic game about urban planning and community development",
+};
+
+export default async function Page() {
+  // run the same server-side image validation
+  await Promise.all(deckCards.map((card) =>
+    getValidatedImagePath(card.image)
+  ));
+
+  // render inside the existing client layout
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-4 bg-gradient-to-b from-slate-900 to-slate-800">
-      <CardGame />
-    </main>
-  )
+    <GameLayout>
+      {/* GamePage is an async server component that returns your loading UI */}
+      <GamePage />
+    </GameLayout>
+  );
 }

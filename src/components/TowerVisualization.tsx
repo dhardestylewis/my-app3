@@ -1,12 +1,15 @@
 "use client";
 import { useState, useEffect, useMemo } from 'react';
-import { useGameStore } from '../store/useGameStore';
+import { useBuildingStore } from '@/stores/useBuildingStore';
 import { Building, Users, Scale, Layers } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { CardData } from '@/data/types';
 
 const TowerVisualization = () => {
-  const getFloorSummary = useGameStore(state => state.getFloorSummary);
-  const [buildingData, setBuildingData] = useState({
+  const [buildingData, setBuildingData] = useState<{
+    floorData: { floor: number; sqft: number; uses: CardData[]; score: number }[];
+    totalScore: number;
+  }>({
     floorData: [],
     totalScore: 0
   });
@@ -15,8 +18,23 @@ const TowerVisualization = () => {
   // Update building data when the game state changes
   useEffect(() => {
     const updateBuildingData = () => {
-      const summary = getFloorSummary();
-      setBuildingData(summary);
+      // Assuming getFloorSummary now returns the correct type { floor: number; sqft: number; uses: CardData[]; score: number }[]
+      const summary = getFloorSummary(); 
+      
+      // Define FloorData based on the expected structure, which uses CardData for 'uses'
+      interface FloorData {
+        floor: number;
+        sqft: number;
+        uses: CardData[]; // Use CardData here
+        score: number;
+      }
+
+      // No need for BuildingData interface here if only used once
+
+      setBuildingData({ 
+        floorData: summary, // No need for casting if getFloorSummary returns the correct type
+        totalScore: summary.reduce((total: number, floor: FloorData) => total + floor.score, 0) 
+      });
     };
 
     // Initial update
@@ -199,9 +217,9 @@ const TowerVisualization = () => {
                                 ? 'bg-amber-950/50 text-amber-400 border border-amber-800/50' 
                                 : 'bg-emerald-950/50 text-emerald-400 border border-emerald-800/50'
                             }`}
-                            title={`${use.units > 1 ? `${use.units}× ` : ''}${use.cardName}`}
+                            title={`${(use.units || 0) > 1 ? `${use.units}× ` : ''}${use.cardName}`}
                           >
-                            {use.units > 1 ? `${use.units}× ` : ''}{use.cardName}
+                            {(use.units || 0) > 1 ? `${use.units}× ` : ''}{use.cardName}
                           </span>
                         ))}
                       </div>
@@ -241,3 +259,52 @@ const TowerVisualization = () => {
 };
 
 export default TowerVisualization;
+
+// Define the expected structure of a floor within the store state
+interface FloorState {
+  sqftUsed: number;
+  uses: CardData[]; // Assuming 'uses' in the store holds CardData objects
+  [key: string]: any; // Allow for other properties if necessary
+}
+
+// Define the return type for getFloorSummary
+interface FloorSummary {
+  floor: number;
+  sqft: number;
+  uses: CardData[];
+  score: number;
+}
+
+function getFloorSummary(): FloorSummary[] {
+  // Retrieve the building state from the store.
+  // Use the defined FloorState interface for better type safety.
+  const { floors } = useBuildingStore.getState() as unknown as { floors: FloorState[] };
+
+  if (!floors || !Array.isArray(floors) || floors.length === 0) return [];
+
+  return floors.map((floor, index) => {
+    // Calculate the total score for the floor by summing up the impact of each use.
+    // Ensure 'use' has an 'impact' property, default to 0 if not present or invalid.
+    const score = floor.uses.reduce((total, use) => total + (use.impact ?? 0), 0);
+
+    return {
+      floor: index + 1,          // Floor number (starting from 1)
+      sqft: floor.sqftUsed,      // Total area used on the floor
+      uses: floor.uses,          // List of uses on this floor
+      score,                     // Aggregate score for this floor
+    };
+  });
+}
+
+function setBuildingData({
+  floorData,
+  totalScore,
+}: {
+  floorData: { floor: number; sqft: number; uses: CardData[]; score: number }[];
+  totalScore: number;
+}) {
+  // In this example, we simply log the new data.
+  // In a real app you might update a global store or trigger additional side effects.
+  console.log("New building data:", { floorData, totalScore });
+}
+

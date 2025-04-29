@@ -1,56 +1,132 @@
-// data/types.ts
+// src/data/types.ts
+import { ReactNode } from 'react';
+import { Player } from "@/stores/usePlayersStore";
 
-// Card display metadata
-export interface CardDisplayInfo {
-    icon: string;       // Icon name for visual representation
-    cost: string;       // Cost indicator (e.g., "$", "$$", "$$$")
-    summary: string;    // Brief description of card
-}
-
-// Core card data structure
+/**
+ * Represents a single card in the game
+ */
 export interface CardData {
-    id: string;                 // Unique identifier
-    name: string;               // Display name
-    category: string;           // Card category (Housing, Retail/Commercial, Community Facility, etc.)
-    image?: string;             // Optional path to card image
-    netScoreImpact: number;     // Impact on the overall project balance score
-    baseSqft: number;           // Base square footage required/used by this card
-    minSqft?: number;           // Optional minimum square footage required
-    maxSqft?: number;           // Optional maximum square footage allowed
-    requiresFloor?: number[];   // Optional specific floors where this can be placed
-    isMandatory?: boolean;      // Whether this is a mandatory card (auto-applied)
-    isMutuallyExclusiveWith?: string[]; // Optional IDs of cards that can't coexist with this
-    cost: number;               // Financial cost to build/implement this card
-    cashFlow?: number;          // Optional ongoing financial benefit/cost
-    displayInfo: CardDisplayInfo; // Display metadata
+  // Core identity
+  id: string;
+  name: string;
+  description?: string;            
+  
+  // Grouping
+  type?: 'Feature' | 'Bug' | 'Debt';  
+  category?: string;                
+  
+  // Visuals
+  imageUrl?: string;                
+  image?: string;                  
+  
+  // Scoring / impact
+  value?: number;                  
+  netScoreImpact?: number;          
+  impact?: number;                  
+  
+  // Financials
+  cost?: number;                    
+  cashFlow?: number;                
+  
+  // Sizing & placement
+  baseSqft?: number;                
+  minSqft?: number;                
+  requiresFloor?: number[];        
+  
+  // Card-specific metadata
+  displayInfo?: {
+    icon: string;
+    cost: string;
+    summary: string;
+  };
+  
+  // Runtime-only fields (e.g. in your floor uses)
+  owner?: 'developer' | 'community';
+  units?: number;
+  cardName?: string;                
+  
+  // Side-effects
+  effect?: (gameState: any) => void;
 }
 
-// Building use data for a specific card placement
-export interface BuildingUse {
-    cardId: string;           // ID of the card
-    cardName: string;         // Name of the card
-    category: string;         // Category of card
-    sqft: number;             // Square footage used
-    units: number;            // Number of units (especially for housing)
-    impact: number;           // Score impact of this placement
-    owner: string;            // Which player placed this (community/developer)
+/**
+ * Represents the current phase of negotiation, including
+ * visual indicators and state flags.
+ */
+export interface PhaseInfo {
+  text: string;               // Description of the current phase/action needed
+  icon: ReactNode;            // Icon representing the phase
+  color: string;              // Tailwind color class for text/UI elements
+  
+  // Phase state flags
+  isInitialProposalPhase: boolean;  // Lead player making initial proposal
+  isResponsePhase: boolean;         // Responding player considering options
+  isCounterDecisionPhase: boolean;  // Lead player deciding on counter-proposal
 }
 
-// Data for a single floor in the building
-export interface FloorData {
-    sqftUsed: number;         // Total square footage used on this floor
-    uses: BuildingUse[];      // List of uses on this floor
-    height: number;           // Height of this floor in feet
-    score: number;            // Score impact of this floor
+/**
+ * The state of a single floor during the negotiation process
+ */
+export interface FloorState {
+  floorNumber: number;
+  // Combining old and new status options for backward compatibility
+  status: 'pending' | 'negotiating' | 'completed' | 'failed' | 'agreed' | 'skipped' | 'reopened';
+  proposalA?: CardData;      // Lead player's proposal
+  proposalB?: CardData;      // Response player's counter-proposal
+  winnerCard?: CardData;     // The card that was ultimately placed on this floor
+  resolvedCard?: CardData;   // Legacy field for backward compatibility (same as winnerCard)
+  committedBy?: 'A' | 'B' | 'auto' | 'none' | null;  // Who finalized the decision
+  units: number;             // How many units of the card were placed
+  
+  // Legacy fields for backward compatibility
+  requiredFeatures?: number;
+  allowedBugs?: number;
+  technicalDebtLimit?: number;
+  negotiationLog?: string[];
+  isCurrent?: boolean;
 }
 
-// For backward compatibility
-export enum BuildingUse {
-    HOUSING_AFFORDABLE = 'Housing Affordable',
-    HOUSING_MARKET = 'Housing Market Rate',
-    RETAIL_LUXURY = 'Retail Luxury',
-    RETAIL_ESSENTIAL = 'Retail Essential',
-    COMMUNITY_HIGH = 'Community High Impact',
-    COMMUNITY_LOW = 'Community Low Impact',
-    AMENITY = 'Amenity',
+/**
+ * Building state represents the overall state of the constructed building
+ */
+export interface BuildingState {
+  baselineScore?: number;    // Current score value
+  currentScore?: number;     // Legacy field for backward compatibility
+  totalFloors: number;       // Total floors in the building
+  completedFloors: number;   // Number of floors with agreed cards
+  failedFloors: number;      // Number of floors that were skipped
+}
+
+/**
+ * Represents a log entry for debugging or display
+ */
+export interface DebugLog {
+  id: string;
+  timestamp: number;
+  level: 'info' | 'warn' | 'error' | 'debug';
+  category: string;
+  message: string;
+  data?: any;
+}
+
+/**
+ * Game state represents the overall state of the game
+ */
+export interface GameState {
+  phase?: 'title' | 'playing' | 'gameOver';
+  gamePhase?: 'title' | 'setup' | 'negotiation' | 'resolution' | 'gameOver'; // Legacy field
+  isAiTurn?: boolean;
+  currentFloor: number;
+  currentScore?: number;
+  gameLog?: string[];
+  
+  // Legacy fields for backward compatibility
+  players?: Player[];
+  floors?: FloorState[];
+  building?: BuildingState;
+  currentPlayerIndex?: number;
+  turnNumber?: number;
+  eventDeck?: CardData[];
+  discardPile?: CardData[];
+  debugLog?: DebugLog[];
 }
