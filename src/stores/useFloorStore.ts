@@ -1,4 +1,3 @@
-// stores/useFloorStore.ts
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import { CardData } from "@/data/types";
@@ -7,10 +6,12 @@ import { usePlayersStore } from './usePlayersStore';
 import { useBuildingStore } from './useBuildingStore';
 import { logDebug } from '@/utils/logger';
 
-// Enums for clearer type safety
+// ===========================
+//         Types
+// ===========================
 export enum FloorStatus {
   Pending = 'pending',      // Actively being negotiated or not yet started
-  Agreed = 'agreed',        // Negotiation successful, card placed
+  Agreed = 'agreed',        // Negotiation successful, card(s) placed
   Skipped = 'skipped',      // Negotiation failed or passed, no card placed
   Reopened = 'reopened',    // Recalled, ready for renegotiation
 }
@@ -22,14 +23,22 @@ export enum Committer {
   None = 'none',
 }
 
+/**
+ * A concrete card slot on the building once a floor is finalised.
+ * Units are stored per‑card to enable mixed‑unit stacks.
+ */
+export interface PlacedCard {
+  card: CardData;
+  units: number; // default 1
+}
+
 export interface FloorState {
   floorNumber: number;
   status: FloorStatus;
-  proposalA?: CardData;     // Player A's proposal for this floor
-  proposalB?: CardData;     // Player B's proposal for this floor
-  winnerCard?: CardData;    // The card agreed upon for this floor
-  committedBy: Committer | null; // Who (or what) finalized the decision
-  units: number;            // Typically 1, could change with future mechanics
+  proposalA?: CardData;        // Player A's single active proposal for this floor
+  proposalB?: CardData;        // Player B's single active proposal for this floor
+  winnerCards: PlacedCard[];   // One or many cards agreed for the floor
+  committedBy: Committer | null; // Who (or what) finalised the decision
 }
 
 interface FloorStoreState {
@@ -42,20 +51,20 @@ interface FloorStoreState {
   setCurrentFloor: (floorNumber: number) => void;
   /** Sets a proposal card for the current floor for either Player A or Player B. Includes validation. */
   setProposal: (isPlayerA: boolean, card: CardData) => void;
-   /** Clears proposals for the current floor. Useful for resetting state if needed. */
+  /** Clears proposals for the current floor. Useful for resetting state if needed. */
   clearCurrentFloorProposals: () => void;
-  /** Finalizes the state of a specific floor (e.g., Agreed, Skipped). */
+  /** Finalises the state of a specific floor (e.g., Agreed, Skipped). Can now accept multiple winner cards. */
   finalizeFloor: (
     floorNumber: number,
     status: FloorStatus,
-    winnerCard?: CardData,
+    winnerCards?: PlacedCard[],
     committedBy?: Committer | null
   ) => void;
   /** Checks if a recall action is valid for a given floor. */
   validateRecall: (floorNumber: number) => { isValid: boolean; reason: string };
-   /** Applies the recall action, reopening a floor for negotiation. */
+  /** Applies the recall action, reopening a floor for negotiation. */
   applyRecall: (floorNumber: number) => {
-    winnerCard?: CardData;
+    winnerCards?: PlacedCard[];
     committedBy?: Committer | null
   };
 
@@ -65,38 +74,44 @@ interface FloorStoreState {
   getNextPendingFloor: () => number;
 }
 
-// Initialize with a default array of floors
+// ===========================
+//   Helpers / Initialisers
+// ===========================
 const createInitialFloors = (): FloorState[] => {
   const initialFloors: FloorState[] = [];
   for (let i = 1; i <= MAX_STORIES; i++) {
     initialFloors.push({
       floorNumber: i,
-      status: FloorStatus.Pending, // Start all floors as pending
+      status: FloorStatus.Pending,
       proposalA: undefined,
       proposalB: undefined,
-      winnerCard: undefined,
+      winnerCards: [],
       committedBy: null,
-      units: 1,
     });
   }
   return initialFloors;
 };
 
+function logFloorAction(message: string): void {
+  console.info(`[FLOOR ACTION]: ${message}`);
+}
 
+// ===========================
+//         Store
+// ===========================
 export const useFloorStore = create<FloorStoreState>()(
   immer((set, get) => ({
-    // ===========================
-    //         State
-    // ===========================
+    // ---------------------------
+    //           State
+    // ---------------------------
     floors: createInitialFloors(),
     currentFloor: 1,
 
-    // ===========================
-    //         Actions
-    // ===========================
+    // ---------------------------
+    //          Actions
+    // ---------------------------
     initializeFloors: () => {
       logDebug(`Initializing floors for a new game`, 'Floors');
-      logDebug(`Creating ${MAX_STORIES} empty floors`, 'Floors');
       const newFloors = createInitialFloors();
       set({ floors: newFloors, currentFloor: 1 });
     },
@@ -104,244 +119,127 @@ export const useFloorStore = create<FloorStoreState>()(
     setCurrentFloor: (floorNumber) => {
       if (floorNumber < 1 || floorNumber > MAX_STORIES) {
         logDebug(`Invalid floor number ignored: ${floorNumber}`, 'Floors');
-        console.error(`Attempted to set invalid current floor: ${floorNumber}`);
         return;
       }
       logFloorAction(`Moving to floor ${floorNumber}`);
-      logDebug(`Setting current floor: ${floorNumber}`, 'Floors');
       set({ currentFloor: floorNumber });
     },
 
-    /**
-     * Sets a proposal card for the current floor after validation.
-     * Ensures proposals are only set on pending/reopened floors
-     * and that a player doesn't overwrite their existing proposal.
-     */
     setProposal: (isPlayerA, card) => {
-      logDebug(`Attempting setProposal: isPlayerA=${isPlayerA}, card=${card.name} (ID: ${card.id}), currentFloor=${get().currentFloor}`, 'Floors');
+      logDebug(`Attempting setProposal: isPlayerA=${isPlayerA}, card=${card.name}`, 'Floors');
 
       set(state => {
         const floorIndex = state.floors.findIndex(f => f.floorNumber === state.currentFloor);
-        if (floorIndex === -1) {
-          logDebug(`Error: Floor not found: ${state.currentFloor}`, 'Floors');
-          console.error(`setProposal failed: Floor ${state.currentFloor} not found in state.`);
-          return;
-        }
+        if (floorIndex === -1) return;
 
         const currentFloorState = state.floors[floorIndex];
-        const floorNumber = state.currentFloor;
 
-        // --- Validation 1: Check Floor Status ---
-        if (currentFloorState.status !== FloorStatus.Pending && currentFloorState.status !== FloorStatus.Reopened) {
-          logDebug(`Error: Cannot set proposal on floor ${floorNumber}. Status is ${currentFloorState.status}.`, 'Floors');
-          console.warn(`setProposal blocked: Floor ${floorNumber} has status ${currentFloorState.status}, cannot set proposal.`);
-          return;
-        }
+        // Only pending or reopened floors can accept proposals
+        if (![FloorStatus.Pending, FloorStatus.Reopened].includes(currentFloorState.status)) return;
 
-        // --- Validation 2: Check if Proposal Slot is Already Filled ---
         if (isPlayerA) {
-          if (currentFloorState.proposalA) {
-            logDebug(`Warning: Proposal A already exists for floor ${floorNumber}. Current: ${currentFloorState.proposalA.name}, Attempted: ${card.name}. Action blocked.`, 'Floors');
-            console.warn(`setProposal blocked: Proposal A already exists for floor ${floorNumber}.`);
-            return;
-          } else {
-            logDebug(`Setting proposal A for floor ${floorNumber}: ${card.name} (ID: ${card.id})`, 'Floors');
-            currentFloorState.proposalA = card;
-            logFloorAction(`Player A proposed ${card.name} for floor ${floorNumber}`);
-          }
+          if (currentFloorState.proposalA) return; // Do not overwrite existing proposal
+          currentFloorState.proposalA = card;
         } else {
-          if (currentFloorState.proposalB) {
-            logDebug(`Warning: Proposal B already exists for floor ${floorNumber}. Current: ${currentFloorState.proposalB.name}, Attempted: ${card.name}. Action blocked.`, 'Floors');
-            console.warn(`setProposal blocked: Proposal B already exists for floor ${floorNumber}.`);
-            return;
-          } else {
-            logDebug(`Setting proposal B for floor ${floorNumber}: ${card.name} (ID: ${card.id})`, 'Floors');
-            currentFloorState.proposalB = card;
-            logDebug(`Player B proposed ${card.name} for floor ${floorNumber}`, 'Floors');
-          }
+          if (currentFloorState.proposalB) return;
+          currentFloorState.proposalB = card;
         }
       });
     },
 
-    /**
-     * Clears both proposal slots for the current floor.
-     * Useful for explicit state resets during game flow if needed.
-     */
     clearCurrentFloorProposals: () => {
       const currentFloorNum = get().currentFloor;
-      logDebug(`Clearing proposals for current floor: ${currentFloorNum}`, 'Floors');
       set(state => {
-        const floorIndex = state.floors.findIndex(f => f.floorNumber === currentFloorNum);
-        if (floorIndex !== -1) {
-          if (state.floors[floorIndex].proposalA || state.floors[floorIndex].proposalB) {
-            state.floors[floorIndex].proposalA = undefined;
-            state.floors[floorIndex].proposalB = undefined;
-            logFloorAction(`Proposals cleared for floor ${currentFloorNum}.`);
-          } else {
-            logDebug(`No proposals to clear for floor ${currentFloorNum}.`, 'Floors');
-          }
-        } else {
-          logDebug(`Error: Cannot clear proposals, floor ${currentFloorNum} not found.`, 'Floors');
-        }
+        const floor = state.floors.find(f => f.floorNumber === currentFloorNum);
+        if (!floor) return;
+        floor.proposalA = undefined;
+        floor.proposalB = undefined;
       });
     },
 
     /**
-     * Finalizes a floor's state, updating its status and potentially adding a winner card.
-     * Also clears any lingering proposals for the finalized floor.
+     * Finalises a floor. Supports placing multiple cards.
+     * Each card will be forwarded to the BuildingStore with its assigned units.
      */
-    finalizeFloor: (floorNumber, status, winnerCard, committedBy = null) => {
-      logDebug(`Finalizing floor: floor=${floorNumber}, status=${status}, winnerCard=${winnerCard?.name ?? 'N/A'}, committedBy=${committedBy ?? 'N/A'}`, 'Floors');
+    finalizeFloor: (floorNumber, status, winnerCards = [], committedBy = null) => {
+      logDebug(`Finalising floor ${floorNumber} with ${winnerCards.length} card(s)`, 'Floors');
 
       set(state => {
-        const floorIndex = state.floors.findIndex(f => f.floorNumber === floorNumber);
-        if (floorIndex === -1) {
-          logDebug(`Error: Floor not found for finalization: ${floorNumber}`, 'Floors');
-          console.error(`finalizeFloor failed: Floor ${floorNumber} not found.`);
-          return;
-        }
+        const floor = state.floors.find(f => f.floorNumber === floorNumber);
+        if (!floor) return;
 
-        const floorToUpdate = state.floors[floorIndex];
-        const previousStatus = floorToUpdate.status;
-
-        // Update floor state
-        floorToUpdate.status = status;
-        floorToUpdate.winnerCard = winnerCard;
-        floorToUpdate.committedBy = committedBy;
-
-        // --- Proposal Clearing ---
-        if (status === FloorStatus.Agreed || status === FloorStatus.Skipped) {
-          if (floorToUpdate.proposalA || floorToUpdate.proposalB) {
-            logDebug(`Clearing proposals for finalized floor ${floorNumber}.`, 'Floors');
-            floorToUpdate.proposalA = undefined;
-            floorToUpdate.proposalB = undefined;
-          }
-        }
-
-        logDebug(`Floor ${floorNumber} finalized as ${status}${winnerCard ? ` with card ${winnerCard.name}` : ''}${committedBy ? ` by ${committedBy}`: ''}`, 'Floors');
-        logDebug(`Floor ${floorNumber} status changed: ${previousStatus} -> ${status}`, 'Floors');
+        floor.status = status;
+        floor.winnerCards = status === FloorStatus.Agreed ? winnerCards : [];
+        floor.committedBy = committedBy;
+        floor.proposalA = undefined;
+        floor.proposalB = undefined;
       });
 
-      // --- Cross-Store Update: Add Card to Building ---
-      if (status === FloorStatus.Agreed && winnerCard) {
+      // Push agreed cards into BuildingStore
+      if (status === FloorStatus.Agreed && winnerCards.length) {
         const { addCardToFloor } = useBuildingStore.getState();
-        const floorState = get().getFloorState(floorNumber);
+        const { players } = usePlayersStore.getState();
+        let ownerRole = 'neutral';
+        if (committedBy === Committer.PlayerA && players[0]) ownerRole = players[0].role;
+        if (committedBy === Committer.PlayerB && players[1]) ownerRole = players[1].role;
 
-        if (floorState) {
-          let ownerRole = 'neutral';
-          if (committedBy === Committer.PlayerA || committedBy === Committer.PlayerB) {
-            const { players } = usePlayersStore.getState();
-            const playerIndex = committedBy === Committer.PlayerA ? 0 : 1;
-            if (players[playerIndex]) {
-              ownerRole = players[playerIndex].role;
-            }
-          } else if (committedBy === Committer.Auto) {
-            // Handle auto/mediator case if needed
-          }
-
-          logDebug(`Adding card to building store: floor=${floorNumber}, card=${winnerCard.id}, ownerRole=${ownerRole}`, 'Floors');
-          addCardToFloor(
-            floorNumber,
-            winnerCard,
-            floorState.units,
-            ownerRole
-          );
-        } else {
-          logDebug(`Error: Could not find floor state ${floorNumber} after finalization to update building store.`, 'Floors');
-        }
+        winnerCards.forEach(pc => {
+          logDebug(`> addCardToFloor: floor=${floorNumber}, card=${pc.card.id}, units=${pc.units}, owner=${ownerRole}`, 'Floors');
+          addCardToFloor(floorNumber, pc.card, pc.units, ownerRole);
+        });
       }
     },
 
-    // --- validateRecall (Keep existing implementation) ---
+    // ---------------------------
+    //      Recall Handlers
+    // ---------------------------
     validateRecall: (floorNumber) => {
       const { currentFloor, floors } = get();
       const { getCurrentPlayer } = usePlayersStore.getState();
       const currentPlayer = getCurrentPlayer();
 
-      logDebug(`validateRecall called: floorNumber=${floorNumber}, currentFloor=${currentFloor}`, 'Floors');
+      if (!currentPlayer) return { isValid: false, reason: "No active player." };
+      if (floorNumber >= RECALL_MAX_FLOOR) return { isValid: false, reason: `Cannot recall: Floor ${floorNumber} is beyond the recall limit of floor ${RECALL_MAX_FLOOR - 1}.` };
+      if (floorNumber >= currentFloor) return { isValid: false, reason: `Cannot recall: Floor ${floorNumber} is the current or a future floor.` };
+      if (currentPlayer.recallTokens <= 0) return { isValid: false, reason: `${currentPlayer.name} has no recall tokens left.` };
 
-      if (!currentPlayer) {
-        logDebug(`Recall validation failed: No active player`, 'Floors');
-        return { isValid: false, reason: "No active player." };
-      }
-      if (floorNumber >= RECALL_MAX_FLOOR) {
-        logDebug(`Recall validation failed: Floor ${floorNumber} is beyond recall limit (${RECALL_MAX_FLOOR - 1})`, 'Floors');
-        return { isValid: false, reason: `Cannot recall: Floor ${floorNumber} is beyond the recall limit of floor ${RECALL_MAX_FLOOR - 1}.`};
-      }
-      if (floorNumber >= currentFloor) {
-        logDebug(`Recall validation failed: Floor ${floorNumber} is current or future floor`, 'Floors');
-        return { isValid: false, reason: `Cannot recall: Floor ${floorNumber} is the current or a future floor.` };
-      }
-      if (currentPlayer.recallTokens <= 0) {
-        logDebug(`Recall validation failed: Player has no recall tokens left`, 'Floors');
-        return { isValid: false, reason: `Cannot recall: ${currentPlayer.name} has no recall tokens left.` };
-      }
-      const floorToRecall = floors.find(f => f.floorNumber === floorNumber);
-      if (!floorToRecall || floorToRecall.status !== FloorStatus.Agreed) {
-        logDebug(`Recall validation failed: Floor ${floorNumber} was not agreed upon or doesn't exist`, 'Floors');
-        return { isValid: false, reason: `Cannot recall: Floor ${floorNumber} was not agreed upon or doesn't exist.` };
-      }
-      logDebug(`Recall validation passed for floor ${floorNumber}`, 'Floors');
+      const floor = floors.find(f => f.floorNumber === floorNumber);
+      if (!floor || floor.status !== FloorStatus.Agreed) return { isValid: false, reason: `Floor ${floorNumber} was not agreed upon or doesn't exist.` };
+
       return { isValid: true, reason: "" };
     },
 
-    /**
-     * Reopens a previously agreed-upon floor for renegotiation.
-     * Clears the winner card, commitment, and any proposals.
-     * Updates the building store by removing the card.
-     */
     applyRecall: (floorNumber) => {
-      logDebug(`Applying recall: floorNumber=${floorNumber}`, 'Floors');
-      let recalledCardData: { winnerCard?: CardData; committedBy?: Committer | null } = {};
+      let recalled: { winnerCards?: PlacedCard[]; committedBy?: Committer | null } = {};
 
       set(state => {
-        const floorIndex = state.floors.findIndex(f => f.floorNumber === floorNumber);
-        if (floorIndex === -1) {
-          logDebug(`Error: Cannot apply recall, floor ${floorNumber} not found.`, 'Floors');
-          console.error(`applyRecall failed: Floor ${floorNumber} not found.`);
-          return;
-        }
+        const floor = state.floors.find(f => f.floorNumber === floorNumber);
+        if (!floor || floor.status !== FloorStatus.Agreed) return;
 
-        const floorToRecall = state.floors[floorIndex];
+        recalled = { winnerCards: floor.winnerCards, committedBy: floor.committedBy };
 
-        if (floorToRecall.status !== FloorStatus.Agreed) {
-          logDebug(`Warning: Cannot apply recall to floor ${floorNumber}, status is ${floorToRecall.status} (expected Agreed).`, 'Floors');
-          return;
-        }
-
-        const previousStatus = floorToRecall.status;
-        recalledCardData = { winnerCard: floorToRecall.winnerCard, committedBy: floorToRecall.committedBy };
-
-        // --- Reset the floor state for renegotiation ---
-        floorToRecall.status = FloorStatus.Reopened;
-        floorToRecall.winnerCard = undefined;
-        floorToRecall.committedBy = null;
-        floorToRecall.proposalA = undefined;
-        floorToRecall.proposalB = undefined;
-
-        logDebug(`Floor ${floorNumber} recalled and reopened`, 'Floors');
-        logDebug(`Floor ${floorNumber} status changed: ${previousStatus} -> ${FloorStatus.Reopened}. Proposals cleared.`, 'Floors');
+        floor.status = FloorStatus.Reopened;
+        floor.winnerCards = [];
+        floor.committedBy = null;
+        floor.proposalA = undefined;
+        floor.proposalB = undefined;
       });
 
-      // --- Cross-Store Update: Remove Card from Building ---
-      if (recalledCardData.winnerCard) {
+      // Remove each card from BuildingStore
+      if (recalled.winnerCards?.length) {
         const { removeCardFromFloor } = useBuildingStore.getState();
-        logDebug(`Removing recalled card ${recalledCardData.winnerCard.id} from building store at floor ${floorNumber}`, 'Floors');
-        removeCardFromFloor(floorNumber, recalledCardData.winnerCard.id);
-      } else {
-        logDebug(`No winner card found on floor ${floorNumber} during recall, nothing to remove from building store.`, 'Floors');
+        recalled.winnerCards.forEach(pc => removeCardFromFloor(floorNumber, pc.card.id));
       }
 
-      return recalledCardData;
+      return recalled;
     },
 
-    // ===========================
-    //         Getters
-    // ===========================
+    // ---------------------------
+    //          Getters
+    // ---------------------------
     getCurrentFloorState: () => {
       const { floors, currentFloor } = get();
-      const floorState = floors.find(f => f.floorNumber === currentFloor);
-      return floorState;
+      return floors.find(f => f.floorNumber === currentFloor);
     },
 
     getFloorState: (floorNumber) => {
@@ -351,22 +249,8 @@ export const useFloorStore = create<FloorStoreState>()(
 
     getNextPendingFloor: () => {
       const { floors, currentFloor } = get();
-      const nextNegotiableFloor = floors.find(
-        f => f.floorNumber > currentFloor && (f.status === FloorStatus.Pending || f.status === FloorStatus.Reopened)
-      );
-
-      const nextFloor = nextNegotiableFloor
-        ? nextNegotiableFloor.floorNumber
-        : Math.min(currentFloor + 1, MAX_STORIES + 1);
-
-      logDebug(`Next negotiable floor identified after ${currentFloor} is ${nextFloor}`, 'Floors');
-      return nextFloor;
-    }
+      const next = floors.find(f => f.floorNumber > currentFloor && [FloorStatus.Pending, FloorStatus.Reopened].includes(f.status));
+      return next ? next.floorNumber : Math.min(currentFloor + 1, MAX_STORIES + 1);
+    },
   }))
 );
-
-function logFloorAction(message: string): void {
-  console.info(`[FLOOR ACTION]: ${message}`);
-}
-
-// (Removed duplicate logFloorAction implementation)
