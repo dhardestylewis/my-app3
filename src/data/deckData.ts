@@ -2,444 +2,386 @@
 import { CardData } from "./types";
 
 // ------------------------------
-// BALANCE CONFIGURATION 
+// MANDATORY IMPACTS (Systems & Streetscape)
 // ------------------------------
-
-// Per-square-foot impact targets for balanced gameplay
-const IMPACT_PER_SQFT = {
-    HOUSING_AFFORDABLE: -0.5,   // Community benefit but moderate
-    HOUSING_MARKET: 1.0,        // Developer profit but reasonable
-    RETAIL_LUXURY: 4.0,         // High profit per sqft
-    RETAIL_ESSENTIAL: -1.5,     // Community benefit
-    COMMUNITY_HIGH: -2.0,       // High community value
-    COMMUNITY_LOW: -0.5,        // Modest community value
-    AMENITY: -1.0,              // Community amenities are slight negative
-};
-
-// Typical square footage by use
-const TYPICAL_SQFT = {
-    HOUSING_UNIT: 1000,         // 1000 sq ft per housing unit
-    RETAIL_SMALL: 2500,         // Small retail space
-    RETAIL_MEDIUM: 5000,        // Medium retail space
-    RETAIL_LARGE: 7500,         // Large retail space
-    COMMUNITY_SMALL: 3000,      // Small community facility
-    COMMUNITY_MEDIUM: 5000,     // Medium community facility
-    COMMUNITY_LARGE: 7000,      // Large community facility
-};
-
-// Cost per square foot by use (construction costs)
-const COST_PER_SQFT = {
-    HOUSING_AFFORDABLE: 300,    // Affordable housing costs less to build
-    HOUSING_MARKET: 400,        // Market rate costs more to build
-    RETAIL_BASIC: 250,          // Basic retail build-out
-    RETAIL_LUXURY: 350,         // Luxury retail build-out
-    COMMUNITY: 200,             // Community spaces cost less
-    AMENITY: 150,               // Amenities are lower cost
-};
-
-// Cash flow per square foot (for financial viability)
-const CASH_FLOW_PER_SQFT = {
-    HOUSING_AFFORDABLE: 15,     // Lower but positive cash flow
-    HOUSING_MARKET: 30,         // Higher cash flow
-    RETAIL_ESSENTIAL: 20,       // Essential retail modest cash flow
-    RETAIL_LUXURY: 40,          // Luxury retail high cash flow
-    COMMUNITY_SUBSIDIZED: 5,    // Subsidized - barely breaks even
-    COMMUNITY_MARKET: 15,       // Market rate community spaces
-};
-
-// --- IMAGE HANDLING CONFIGURATION ---
-/**
- * Default image path used when a card's specified image is missing or invalid.
- * Ensure this image exists in your `/public` directory.
- */
-export const DEFAULT_CARD_IMAGE_PATH = "/cards/default-card.png";
-
-// ------------------------------
-// CORE CARD DEFINITIONS
-// ------------------------------
-
-// Calculate the mandatory baseline impacts (climate requirements)
-// These now have a marginal cost associated
-export const MANDATORY_IMPACTS = [
-    {
-        id: "energy-efficient-systems",
-        name: "Base Energy Efficiency",
-        netScoreImpact: -8, // Down from -10, still significant
-    },
-    {
-        id: "onsite-renewable-energy",
-        name: "Base Renewable Energy",
-        netScoreImpact: -7, // Down from -8, still significant
-    },
+export const MANDATORY_IMPACTS: CardData[] = [
+  {
+    id: "onsite-renewable-energy",
+    name: "Onsite Renewable Energy",
+    category: "System",
+    image: "/cards/onsite-renewable-energy.png",
+    minimumSqft: 0,
+    netScoreImpact: 0,
+    cost: 15,            // flat
+    cashFlow: 12,        // flat
+    displayInfo: {
+      icon: "Bolt",
+      cost: "$",
+      summary: "Renewable generation"
+    }
+  },
+  {
+    id: "energy-efficient-systems",
+    name: "Energy Efficient Systems",
+    category: "System",
+    image: "/cards/energy-efficient-systems.png",
+    minimumSqft: 0,
+    netScoreImpact: 0,
+    cost: 35,
+    cashFlow: 12,
+    displayInfo: {
+      icon: "Zap",
+      cost: "$$",
+      summary: "Envelope & MEP upgrades"
+    }
+  },
+  {
+    id: "streetscape-enhancement",
+    name: "Streetscape Enhancement (trees, seating etc)",
+    category: "System",
+    image: "/cards/streetscape-enhancement.png",
+    minimumSqft: 0,
+    netScoreImpact: 30,
+    cost: 3500,
+    cashFlow: 0,
+    displayInfo: {
+      icon: "TreeDeciduous",
+      cost: "$$$",
+      summary: "Public realm improvements"
+    }
+  }
 ];
 
-// Helper function to calculate card values based on square footage
-const calculateCardValues = (
-    sqft: number, 
-    impactPerSqft: number, 
-    costPerSqft: number, 
-    cashFlowPerSqft?: number
-) => {
-    return {
-        netScoreImpact: Math.round(sqft * impactPerSqft / 1000), // Scale for better gameplay
-        cost: sqft * costPerSqft,
-        cashFlow: cashFlowPerSqft ? sqft * cashFlowPerSqft : undefined
-    };
-};
-
-// Playable cards with BALANCED IMPACT and FINANCIAL metrics
+// ------------------------------
+// PLAYABLE CARDS
+// ------------------------------
 export const deckCards: CardData[] = [
-    // --- HOUSING: Now with proper density economics ---
-    {
-        id: "affordable-condo-unit",
-        name: "Affordable Condo Unit",
-        category: "Housing",
-        image: "/cards/affordable-condo-1.png",
-        ...calculateCardValues(
-            TYPICAL_SQFT.HOUSING_UNIT, 
-            IMPACT_PER_SQFT.HOUSING_AFFORDABLE,
-            COST_PER_SQFT.HOUSING_AFFORDABLE,
-            CASH_FLOW_PER_SQFT.HOUSING_AFFORDABLE
-        ),
-        baseSqft: TYPICAL_SQFT.HOUSING_UNIT,
-        displayInfo: { 
-            icon: "Home", 
-            cost: "$$", 
-            summary: "Community-focused condo (stackable)" 
-        },
-    },
-    {
-        id: "market-condo-unit",
-        name: "Market Rate Condo Unit",
-        category: "Housing",
-        image: "/cards/market-condo-1.png",
-        ...calculateCardValues(
-            TYPICAL_SQFT.HOUSING_UNIT, 
-            IMPACT_PER_SQFT.HOUSING_MARKET,
-            COST_PER_SQFT.HOUSING_MARKET,
-            CASH_FLOW_PER_SQFT.HOUSING_MARKET
-        ),
-        baseSqft: TYPICAL_SQFT.HOUSING_UNIT,
-        displayInfo: { 
-            icon: "Building", 
-            cost: "$$$", 
-            summary: "Profit-focused condo (stackable)" 
-        },
-    },
-    {
-        id: "affordable-rental-unit",
-        name: "Affordable Rental Unit",
-        category: "Housing",
-        image: "/cards/affordable-rental.png",
-        ...calculateCardValues(
-            TYPICAL_SQFT.HOUSING_UNIT, 
-            IMPACT_PER_SQFT.HOUSING_AFFORDABLE * 0.8, // Slightly more community-focused
-            COST_PER_SQFT.HOUSING_AFFORDABLE * 0.9,   // Slightly cheaper
-            CASH_FLOW_PER_SQFT.HOUSING_AFFORDABLE * 0.8 // Lower cash flow
-        ),
-        baseSqft: TYPICAL_SQFT.HOUSING_UNIT,
-        displayInfo: { 
-            icon: "Key", 
-            cost: "$", 
-            summary: "Community rental housing (stackable)" 
-        },
-    },
-    {
-        id: "luxury-condo-unit",
-        name: "Luxury Condo Unit",
-        category: "Housing",
-        image: "/cards/luxury-condo.png",
-        ...calculateCardValues(
-            TYPICAL_SQFT.HOUSING_UNIT * 1.5, // Larger units
-            IMPACT_PER_SQFT.HOUSING_MARKET * 1.5, // Much more profit-focused
-            COST_PER_SQFT.HOUSING_MARKET * 1.5,  // More expensive
-            CASH_FLOW_PER_SQFT.HOUSING_MARKET * 2 // Much higher cash flow
-        ),
-        baseSqft: TYPICAL_SQFT.HOUSING_UNIT * 1.5,
-        displayInfo: {
-            icon: "Star",
-            cost: "$$$$",
-            summary: "High-end luxury condos (stackable)"
-        },
-    },
+  // --- HOUSING ---
+  {
+    id: "affordable-rental-unit",
+    name: "1 unit - Affordable Rental",
+    category: "Housing",
+    image: "/cards/affordable-rental.png",
+    minimumSqft: 600,
+    netScoreImpact: -10,
+    cost: 600 * 1000,
+    cashFlow: 600 * 69.54,
+    displayInfo: {
+      icon: "Key",
+      cost: "$",
+      summary: "Community rental unit"
+    }
+  },
+  {
+    id: "affordable-condo-unit",
+    name: "1 unit - Affordable Condo",
+    category: "Housing",
+    image: "/cards/affordable-condo.png",
+    minimumSqft: 600,
+    netScoreImpact: -9,
+    cost: 600 * 1000,
+    cashFlow: 600 * 307.69,
+    displayInfo: {
+      icon: "Home",
+      cost: "$$",
+      summary: "Owner‑occupied condo"
+    }
+  },
+  {
+    id: "market-rental-unit",
+    name: "1 unit - Market Rate Rental",
+    category: "Housing",
+    image: "/cards/market-rental.png",
+    minimumSqft: 700,
+    netScoreImpact: 9,
+    cost: 700 * 1000,
+    cashFlow: 700 * 75,
+    displayInfo: {
+      icon: "Apartment",
+      cost: "$$",
+      summary: "Market‑rate rental"
+    }
+  },
+  {
+    id: "market-condo-unit",
+    name: "1 unit - Market Rate Condo",
+    category: "Housing",
+    image: "/cards/market-condo.png",
+    minimumSqft: 700,
+    netScoreImpact: 18,
+    cost: 700 * 1000,
+    cashFlow: 700 * 571.43,
+    displayInfo: {
+      icon: "Building",
+      cost: "$$$",
+      summary: "Luxury condo"
+    }
+  },
 
-    // --- RETAIL/COMMERCIAL: Balanced by sq ft and viability ---
-    {
-        id: "vendor-market",
-        name: "Vendor Market",
-        category: "Retail/Commercial",
-        image: "/cards/vendor-market.png",
-        ...calculateCardValues(
-            TYPICAL_SQFT.RETAIL_MEDIUM,
-            IMPACT_PER_SQFT.RETAIL_ESSENTIAL,
-            COST_PER_SQFT.RETAIL_BASIC,
-            CASH_FLOW_PER_SQFT.RETAIL_ESSENTIAL
-        ),
-        baseSqft: TYPICAL_SQFT.RETAIL_MEDIUM,
-        minSqft: TYPICAL_SQFT.RETAIL_MEDIUM,
-        requiresFloor: [1, 2],
-        displayInfo: { 
-            icon: "ShoppingBasket", 
-            cost: "$", 
-            summary: "Local vendors, community-focused" 
-        },
-    },
-    {
-        id: "big-box-store",
-        name: "Big Box Retail",
-        category: "Retail/Commercial",
-        image: "/cards/big-box-store.png",
-        ...calculateCardValues(
-            TYPICAL_SQFT.RETAIL_LARGE,
-            IMPACT_PER_SQFT.RETAIL_LUXURY,
-            COST_PER_SQFT.RETAIL_BASIC,
-            CASH_FLOW_PER_SQFT.RETAIL_LUXURY
-        ),
-        baseSqft: TYPICAL_SQFT.RETAIL_LARGE,
-        minSqft: TYPICAL_SQFT.RETAIL_LARGE,
-        requiresFloor: [1, 2],
-        displayInfo: { 
-            icon: "Store", 
-            cost: "$$$", 
-            summary: "Chain store, developer-focused" 
-        },
-    },
-    {
-        id: "grocery-store",
-        name: "Grocery Store",
-        category: "Retail/Commercial",
-        image: "/cards/grocery-store.png",
-        ...calculateCardValues(
-            TYPICAL_SQFT.RETAIL_MEDIUM,
-            IMPACT_PER_SQFT.RETAIL_ESSENTIAL,
-            COST_PER_SQFT.RETAIL_BASIC,
-            CASH_FLOW_PER_SQFT.RETAIL_ESSENTIAL * 1.3 // Essential but profitable
-        ),
-        baseSqft: TYPICAL_SQFT.RETAIL_MEDIUM,
-        minSqft: TYPICAL_SQFT.RETAIL_MEDIUM,
-        requiresFloor: [1, 2],
-        displayInfo: { 
-            icon: "ShoppingCart", 
-            cost: "$$", 
-            summary: "Essential retail, balanced impact" 
-        },
-    },
-    {
-        id: "restaurant",
-        name: "Restaurant",
-        category: "Retail/Commercial",
-        image: "/cards/restaurant.png",
-        ...calculateCardValues(
-            TYPICAL_SQFT.RETAIL_SMALL,
-            IMPACT_PER_SQFT.RETAIL_ESSENTIAL * 0.8, // Slightly more community-focused
-            COST_PER_SQFT.RETAIL_BASIC * 1.1,      // Slightly more expensive
-            CASH_FLOW_PER_SQFT.RETAIL_ESSENTIAL * 1.2 // Decent cash flow
-        ),
-        baseSqft: TYPICAL_SQFT.RETAIL_SMALL,
-        requiresFloor: [1, 2],
-        displayInfo: { 
-            icon: "Coffee", 
-            cost: "$$", 
-            summary: "Public eatery, balanced impact" 
-        },
-    },
-    {
-        id: "boutique-retail",
-        name: "Boutique Retail",
-        category: "Retail/Commercial",
-        image: "/cards/boutique-retail.png",
-        ...calculateCardValues(
-            TYPICAL_SQFT.RETAIL_SMALL,
-            IMPACT_PER_SQFT.RETAIL_LUXURY * 0.7, // Somewhat developer-focused
-            COST_PER_SQFT.RETAIL_LUXURY,
-            CASH_FLOW_PER_SQFT.RETAIL_LUXURY * 0.8
-        ),
-        baseSqft: TYPICAL_SQFT.RETAIL_SMALL,
-        requiresFloor: [1, 2],
-        displayInfo: {
-            icon: "ShoppingBag",
-            cost: "$$$",
-            summary: "Upscale shopping, developer-focused"
-        },
-    },
-    {
-        id: "bank",
-        name: "Bank",
-        category: "Retail/Commercial",
-        image: "/cards/bank.png",
-        ...calculateCardValues(
-            TYPICAL_SQFT.RETAIL_SMALL,
-            IMPACT_PER_SQFT.RETAIL_LUXURY * 0.5, // Somewhat developer-focused
-            COST_PER_SQFT.RETAIL_BASIC,
-            CASH_FLOW_PER_SQFT.RETAIL_LUXURY * 0.6
-        ),
-        baseSqft: TYPICAL_SQFT.RETAIL_SMALL,
-        minSqft: TYPICAL_SQFT.RETAIL_SMALL,
-        requiresFloor: [1, 2],
-        displayInfo: { 
-            icon: "CreditCard", 
-            cost: "$$", 
-            summary: "Financial service, balanced impact" 
-        },
-    },
+  // --- COMMUNITY FACILITIES ---
+  {
+    id: "art-gallery",
+    name: "Art Gallery",
+    category: "Community Facility",
+    image: "/cards/art-gallery.png",
+    minimumSqft: 7000,
+    netScoreImpact: -123.5,
+    cost: 7000 * 1200,
+    cashFlow: 7000 * 48,
+    requiresFloor: [1, 2],
+    displayInfo: {
+      icon: "Palette",
+      cost: "$$",
+      summary: "Local art venue"
+    }
+  },
+  {
+    id: "dance-studio",
+    name: "Dance Studio",
+    category: "Community Facility",
+    image: "/cards/dance-studio.png",
+    minimumSqft: 5000,
+    netScoreImpact: -122.5,
+    cost: 5000 * 1200,
+    cashFlow: 5000 * 48,
+    requiresFloor: [1, 2],
+    displayInfo: {
+      icon: "MusicNote",
+      cost: "$$",
+      summary: "Community dance space"
+    }
+  },
+  {
+    id: "vocational-school",
+    name: "Vocational School",
+    category: "Community Facility",
+    image: "/cards/vocational-school.png",
+    minimumSqft: 7000,
+    netScoreImpact: -97.5,
+    cost: 7000 * 1000,
+    cashFlow: 7000 * 72,
+    requiresFloor: [1, 2],
+    displayInfo: {
+      icon: "BookOpen",
+      cost: "$$",
+      summary: "Skills training center"
+    }
+  },
+  {
+    id: "daycare",
+    name: "Daycare",
+    category: "Community Facility",
+    image: "/cards/daycare.png",
+    minimumSqft: 8000,
+    netScoreImpact: -97,
+    cost: 8000 * 1000,
+    cashFlow: 8000 * 72,
+    requiresFloor: [1, 2],
+    displayInfo: {
+      icon: "Users",
+      cost: "$$",
+      summary: "Childcare facility"
+    }
+  },
+  {
+    id: "performance-space",
+    name: "Small Performance Space",
+    category: "Community Facility",
+    image: "/cards/performance-space.png",
+    minimumSqft: 6000,
+    netScoreImpact: -163,
+    cost: 6000 * 1200,
+    cashFlow: 6000 * 48,
+    requiresFloor: [1, 2],
+    displayInfo: {
+      icon: "Theater",
+      cost: "$$",
+      summary: "Intimate performance venue"
+    }
+  },
+  {
+    id: "multipurpose-community-space",
+    name: "Multipurpose Community Space",
+    category: "Community Facility",
+    image: "/cards/multipurpose-community-space.png",
+    minimumSqft: 5000,
+    netScoreImpact: -28,
+    cost: 5000 * 1000,
+    cashFlow: 5000 * 48,
+    requiresFloor: [1, 2],
+    displayInfo: {
+      icon: "Archive",
+      cost: "$$",
+      summary: "Flexible event hall"
+    }
+  },
+  {
+    id: "arcade",
+    name: "Arcade",
+    category: "Community Facility",
+    image: "/cards/arcade.png",
+    minimumSqft: 5000,
+    netScoreImpact: -40.5,
+    cost: 5000 * 1200,
+    cashFlow: 5000 * 48,
+    requiresFloor: [1, 2],
+    displayInfo: {
+      icon: "Gamepad",
+      cost: "$$",
+      summary: "Family amusement"
+    }
+  },
 
-    // --- COMMUNITY FACILITIES: More viable economics ---
-    {
-        id: "art-gallery",
-        name: "Art Gallery",
-        category: "Community Facility",
-        image: "/cards/art-gallery.png",
-        ...calculateCardValues(
-            TYPICAL_SQFT.COMMUNITY_LARGE,
-            IMPACT_PER_SQFT.COMMUNITY_HIGH,
-            COST_PER_SQFT.COMMUNITY,
-            CASH_FLOW_PER_SQFT.COMMUNITY_SUBSIDIZED
-        ),
-        baseSqft: TYPICAL_SQFT.COMMUNITY_LARGE,
-        minSqft: TYPICAL_SQFT.COMMUNITY_MEDIUM,
-        requiresFloor: [1, 2],
-        displayInfo: { 
-            icon: "Palette", 
-            cost: "$$", 
-            summary: "Local art space, community-focused" 
-        },
-    },
-    {
-        id: "dance-studio",
-        name: "Dance Studio",
-        category: "Community Facility",
-        image: "/cards/dance-studio.png",
-        ...calculateCardValues(
-            TYPICAL_SQFT.COMMUNITY_MEDIUM,
-            IMPACT_PER_SQFT.COMMUNITY_HIGH * 0.8,
-            COST_PER_SQFT.COMMUNITY,
-            CASH_FLOW_PER_SQFT.COMMUNITY_MARKET * 0.7
-        ),
-        baseSqft: TYPICAL_SQFT.COMMUNITY_MEDIUM,
-        minSqft: TYPICAL_SQFT.COMMUNITY_MEDIUM,
-        requiresFloor: [1, 2],
-        displayInfo: { 
-            icon: "MusicNote", 
-            cost: "$$", 
-            summary: "Community studio, balanced impact" 
-        },
-    },
-    {
-        id: "vocational-school",
-        name: "Vocational School",
-        category: "Community Facility",
-        image: "/cards/vocational-school.png",
-        ...calculateCardValues(
-            TYPICAL_SQFT.COMMUNITY_LARGE,
-            IMPACT_PER_SQFT.COMMUNITY_HIGH * 0.7,
-            COST_PER_SQFT.COMMUNITY,
-            CASH_FLOW_PER_SQFT.COMMUNITY_MARKET
-        ),
-        baseSqft: TYPICAL_SQFT.COMMUNITY_LARGE,
-        minSqft: TYPICAL_SQFT.COMMUNITY_LARGE,
-        requiresFloor: [1, 2],
-        displayInfo: { 
-            icon: "BookOpen", 
-            cost: "$$", 
-            summary: "Skills training, community-focused" 
-        },
-    },
-    {
-        id: "daycare",
-        name: "Daycare",
-        category: "Community Facility",
-        image: "/cards/daycare.png",
-        ...calculateCardValues(
-            TYPICAL_SQFT.COMMUNITY_MEDIUM,
-            IMPACT_PER_SQFT.COMMUNITY_HIGH * 0.7,
-            COST_PER_SQFT.COMMUNITY,
-            CASH_FLOW_PER_SQFT.COMMUNITY_MARKET
-        ),
-        baseSqft: TYPICAL_SQFT.COMMUNITY_MEDIUM,
-        minSqft: TYPICAL_SQFT.COMMUNITY_MEDIUM,
-        requiresFloor: [1, 2],
-        displayInfo: { 
-            icon: "Users", 
-            cost: "$$", 
-            summary: "Childcare facility, community-focused" 
-        },
-    },
-    {
-        id: "performance-space",
-        name: "Small Performance Space",
-        category: "Community Facility",
-        image: "/cards/performance-space.png",
-        ...calculateCardValues(
-            TYPICAL_SQFT.COMMUNITY_LARGE,
-            IMPACT_PER_SQFT.COMMUNITY_HIGH,
-            COST_PER_SQFT.COMMUNITY * 1.2,
-            CASH_FLOW_PER_SQFT.COMMUNITY_SUBSIDIZED
-        ),
-        baseSqft: TYPICAL_SQFT.COMMUNITY_LARGE,
-        minSqft: TYPICAL_SQFT.COMMUNITY_LARGE,
-        requiresFloor: [1, 2],
-        displayInfo: { 
-            icon: "Theater", 
-            cost: "$$", 
-            summary: "Cultural venue, community-focused" 
-        },
-    },
+  // --- RETAIL/COMMERCIAL ---
+  {
+    id: "vendor-market",
+    name: "Vendor Market",
+    category: "Retail/Commercial",
+    image: "/cards/vendor-market.png",
+    minimumSqft: 10000,
+    netScoreImpact: -253,
+    cost: 10000 * 850,
+    cashFlow: 10000 * 48,
+    requiresFloor: [1, 2],
+    displayInfo: {
+      icon: "ShoppingBasket",
+      cost: "$",
+      summary: "Local vendor stalls"
+    }
+  },
+  {
+    id: "big-box-store",
+    name: "Big Box / Chain Store",
+    category: "Retail/Commercial",
+    image: "/cards/big-box-store.png",
+    minimumSqft: 7500,
+    netScoreImpact: 84,
+    cost: 7500 * 850,
+    cashFlow: 7500 * 120,
+    requiresFloor: [1, 2],
+    displayInfo: {
+      icon: "Store",
+      cost: "$$$",
+      summary: "Large chain retailer"
+    }
+  },
+  {
+    id: "grocery-store",
+    name: "Grocery Store",
+    category: "Retail/Commercial",
+    image: "/cards/grocery-store.png",
+    minimumSqft: 3000,
+    netScoreImpact: -57,
+    cost: 3000 * 850,
+    cashFlow: 3000 * 120,
+    requiresFloor: [1, 2],
+    displayInfo: {
+      icon: "ShoppingCart",
+      cost: "$$",
+      summary: "Essential food market"
+    }
+  },
+  {
+    id: "restaurant",
+    name: "Restaurant",
+    category: "Retail/Commercial",
+    image: "/cards/restaurant.png",
+    minimumSqft: 3000,
+    netScoreImpact: -58,
+    cost: 3000 * 1000,
+    cashFlow: 3000 * 84,
+    requiresFloor: [1, 2, "roof"],
+    displayInfo: {
+      icon: "Coffee",
+      cost: "$$",
+      summary: "Public eatery"
+    }
+  },
+  {
+    id: "night-club",
+    name: "Night Club",
+    category: "Retail/Commercial",
+    image: "/cards/night-club.png",
+    minimumSqft: 7000,
+    netScoreImpact: -57.5,
+    cost: 7000 * 1000,
+    cashFlow: 7000 * 84,
+    requiresFloor: [1, 2],
+    displayInfo: {
+      icon: "Music",
+      cost: "$$$",
+      summary: "Late‑night venue"
+    }
+  },
+  {
+    id: "bank",
+    name: "Bank",
+    category: "Retail/Commercial",
+    image: "/cards/bank.png",
+    minimumSqft: 5000,
+    netScoreImpact: -25,
+    cost: 5000 * 1000,
+    cashFlow: 5000 * 96,
+    requiresFloor: [1, 2],
+    displayInfo: {
+      icon: "CreditCard",
+      cost: "$$",
+      summary: "Financial services"
+    }
+  },
 
-    // --- AMENITIES: Both roof and ground level ---
-    {
-        id: "roof-garden",
-        name: "Roof Garden",
-        category: "Roof Amenity",
-        image: "/cards/roof-garden.png",
-        ...calculateCardValues(
-            TYPICAL_SQFT.RETAIL_SMALL,
-            IMPACT_PER_SQFT.AMENITY,
-            COST_PER_SQFT.AMENITY,
-            0 // No direct cash flow
-        ),
-        baseSqft: TYPICAL_SQFT.RETAIL_SMALL,
-        displayInfo: { 
-            icon: "Sprout", 
-            cost: "$", 
-            summary: "Rooftop green space, community-focused" 
-        },
-    },
-    {
-        id: "green-plaza",
-        name: "Green Plaza",
-        category: "Ground Amenity",
-        image: "/cards/green-plaza.png",
-        ...calculateCardValues(
-            TYPICAL_SQFT.RETAIL_SMALL,
-            IMPACT_PER_SQFT.AMENITY * 1.5,
-            COST_PER_SQFT.AMENITY,
-            0 // No direct cash flow
-        ),
-        baseSqft: TYPICAL_SQFT.RETAIL_SMALL,
-        displayInfo: {
-            icon: "TreePine",
-            cost: "$",
-            summary: "Ground-level green space, community-focused"
-        },
-    },
-    {
-        id: "bike-facility",
-        name: "Bike Facility",
-        category: "Ground Amenity",
-        image: "/cards/bike-facility.png",
-        ...calculateCardValues(
-            TYPICAL_SQFT.RETAIL_SMALL * 0.5, // Small footprint
-            IMPACT_PER_SQFT.AMENITY,
-            COST_PER_SQFT.AMENITY * 0.8, // Less expensive
-            0 // No direct cash flow
-        ),
-        baseSqft: TYPICAL_SQFT.RETAIL_SMALL * 0.5,
-        displayInfo: {
-            icon: "Bike",
-            cost: "$",
-            summary: "Bike storage and repair, community-focused"
-        },
-    },
+  // --- AMENITIES ---
+  {
+    id: "roof-garden-bar",
+    name: "Roof Garden / Bar",
+    category: "Amenity",
+    image: "/cards/roof-garden.png",
+    minimumSqft: 6500,
+    netScoreImpact: -21.5,
+    cost: 6500 * 1000,
+    cashFlow: 0,
+    requiresFloor: ["roof"],
+    displayInfo: {
+      icon: "Sprout",
+      cost: "$",
+      summary: "Rooftop green social space"
+    }
+  },
+
+  // --- HOSPITALITY ---
+  {
+    id: "hotel-room",
+    name: "Hotel (per room)",
+    category: "Hospitality",
+    image: "/cards/hotel-room.png",
+    minimumSqft: 45000,
+    netScoreImpact: -20.5,
+    cost: 45000 * 1000,
+    cashFlow: 45000 * 120,
+    displayInfo: {
+      icon: "Hotel",
+      cost: "$$$",
+      summary: "Guest room"
+    }
+  },
+
+  // --- SPECIALTY ---
+  {
+    id: "recording-studio",
+    name: "Recording Studio",
+    category: "Specialty",
+    image: "/cards/recording-studio.png",
+    minimumSqft: 5000,
+    netScoreImpact: -120.5,
+    cost: 5000 * 1200,
+    cashFlow: 5000 * 25,
+    requiresFloor: [1, 2],
+    displayInfo: {
+      icon: "Microphone",
+      cost: "$$",
+      summary: "Audio production space"
+    }
+  }
 ];
 
 // ------------------------------
