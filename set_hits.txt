@@ -1,0 +1,59 @@
+src/stores/loggerStore.ts:72:      set(s => { s.pending.push(entry); });
+src/stores/loggerStore.ts:75:        set(s => { s.batchScheduled = true; });
+src/stores/loggerStore.ts:85:      set(s => {
+src/stores/loggerStore.ts:94:        set(s => { s.batchScheduled = false; });
+src/stores/loggerStore.ts:98:      set(s => {
+src/stores/loggerStore.ts:111:    clear: () => set(s => {
+src/stores/loggerStore.ts:117:    setDebug: (enabled) => set(s => { s.debug = enabled; }),
+src/stores/useAIStore.ts:206:          set(state => {
+src/stores/useAIStore.ts:211:          set(state => {
+src/stores/useAIStore.ts:220:          set(state => {
+src/stores/useAIStore.ts:225:          set(state => {
+src/stores/useAIStore.ts:244:      set(state => {
+src/stores/useAIStore.ts:252:      set(state => {
+src/stores/useBuildingStore.ts:36:  baselineScore: number; // Initial score offset (e.g., from site conditions)
+src/stores/useBuildingStore.ts:95:      set({ building: { ...initialBuildingState } });
+src/stores/useBuildingStore.ts:109:      set(state => {
+src/stores/useBuildingStore.ts:152:      set(state => {
+src/stores/useBuildingStore.ts:197:      set(state => {
+src/stores/useFloorStore.ts:101:      set({ floors: newFloors, currentFloor: 1 });
+src/stores/useFloorStore.ts:112:      set({ currentFloor: floorNumber });
+src/stores/useFloorStore.ts:123:      set(state => {
+src/stores/useFloorStore.ts:173:      set(state => {
+src/stores/useFloorStore.ts:196:      set(state => {
+src/stores/useFloorStore.ts:297:      set(state => {
+src/stores/useGameFlowStore.ts:114:      set(state => {
+src/stores/useGameFlowStore.ts:146:      set(state => {
+src/stores/useGameFlowStore.ts:164:      set(state => {
+src/stores/useGameFlowStore.ts:284:      set(state => {
+src/stores/useGameFlowStore.ts:378:      set(state => {
+src/stores/useGameFlowStore.ts:497:        set(state => {
+src/stores/useGameFlowStore.ts:659:        set(state => {
+src/stores/useGameFlowStore.ts:770:        set(state => {
+src/stores/useGameFlowStore.ts:829:        set(state => {
+src/stores/useGameFlowStore.ts:857:        set(state => {
+src/stores/useGameFlowStore.ts:871:      set(state => {
+src/stores/useGameFlowStore.ts:931:      set(state => {
+src/stores/usePlayersStore.ts:203:        set((state: PlayersStoreState): void => {
+src/stores/usePlayersStore.ts:227:        set((state: PlayersStoreState): void => {
+src/stores/usePlayersStore.ts:237:        set((state: PlayersStoreState): void => {
+src/stores/usePlayersStore.ts:249:          playerMap.set(player.id, index);
+src/stores/usePlayersStore.ts:276:        set((state: PlayersStoreState): void => {
+src/stores/usePlayersStore.ts:292:                  set((state: PlayersStoreState): void => {
+src/stores/usePlayersStore.ts:324:          set((state: PlayersStoreState): void => {
+src/stores/usePlayersStore.ts:334:        set((state: PlayersStoreState): void => {
+src/stores/usePlayersStore.ts:361:        set((state: PlayersStoreState): void => {
+src/stores/usePlayersStore.ts:391:        set((state: PlayersStoreState): void => {
+src/stores/usePlayersStore.ts:399:        set((state: PlayersStoreState): void => {
+src/stores/usePlayersStore.ts:414:        set((state: PlayersStoreState): void => {
+src/stores/usePlayersStore.ts:429:        set((state: PlayersStoreState): void => {
+src/stores/usePlayersStore.ts:473:        set((state: PlayersStoreState): void => {
+src/stores/usePlayersStore.ts:516:        set((state: PlayersStoreState): void => {
+src/stores/usePlayersStore.ts:554:            // Maybe force state correction? set({ currentPlayerIndex: players.indexOf(validPlayer) });
+src/stores/usePlayersStore.ts:696:          set((state: PlayersStoreState): void => {
+src/stores/usePlayersStore.ts:701:        set((state: PlayersStoreState): void => {
+src/stores/useTelemetryStore.ts:60:      set(state => {
+src/stores/useTelemetryStore.ts:71:      set(state => {
+src/stores/useTelemetryStore.ts:77:      set(state => {
+src/stores/useTelemetryStore.ts:87:      set(state => {
+src/stores/useTelemetryStore.ts:94:      set(state => {

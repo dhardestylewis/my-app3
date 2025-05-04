@@ -190,56 +190,69 @@ export const useFloorStore = create<FloorStoreState>()(
      * Finalizes a floor's state, updating its status and potentially adding a winner card.
      * Also clears any lingering proposals for the finalized floor.
      */
-    finalizeFloor: (floorNumber, status, winnerCard, committedBy = null) => {
-      logDebug(`Finalizing floor: floor=${floorNumber}, status=${status}, winnerCard=${winnerCard?.name ?? 'N/A'}, committedBy=${committedBy ?? 'N/A'}`, 'Floors');
+    finalizeFloor: (
+      floorNumber: number,
+      status: FloorStatus,
+      winnerCard?: CardData,
+      committedBy: Committer | null = null
+    ) => {
+      logDebug(
+        `Finalizing floor: floor=${floorNumber}, status=${status}, winnerCard=${winnerCard?.name ?? 'N/A'}, committedBy=${committedBy ?? 'N/A'}`,
+        'Floors'
+      );
 
+      // 1️⃣ Update the floor’s own state (immer draft)
       set(state => {
-        const floorIndex = state.floors.findIndex(f => f.floorNumber === floorNumber);
-        if (floorIndex === -1) {
+        const i = state.floors.findIndex(f => f.floorNumber === floorNumber);
+        if (i === -1) {
           logDebug(`Error: Floor not found for finalization: ${floorNumber}`, 'Floors');
           console.error(`finalizeFloor failed: Floor ${floorNumber} not found.`);
           return;
         }
 
-        const floorToUpdate = state.floors[floorIndex];
-        const previousStatus = floorToUpdate.status;
+        const floor = state.floors[i];
+        const prevStatus = floor.status;
 
-        // Update floor state
-        floorToUpdate.status = status;
-        floorToUpdate.winnerCard = winnerCard;
-        floorToUpdate.committedBy = committedBy;
+        floor.status = status;
+        floor.winnerCard = winnerCard;
+        floor.committedBy = committedBy;
 
-        // --- Proposal Clearing ---
+        // Clear out proposals once a floor is either agreed or skipped
         if (status === FloorStatus.Agreed || status === FloorStatus.Skipped) {
-          if (floorToUpdate.proposalA || floorToUpdate.proposalB) {
+          if (floor.proposalA || floor.proposalB) {
             logDebug(`Clearing proposals for finalized floor ${floorNumber}.`, 'Floors');
-            floorToUpdate.proposalA = undefined;
-            floorToUpdate.proposalB = undefined;
+            floor.proposalA = undefined;
+            floor.proposalB = undefined;
           }
         }
 
-        logDebug(`Floor ${floorNumber} finalized as ${status}${winnerCard ? ` with card ${winnerCard.name}` : ''}${committedBy ? ` by ${committedBy}`: ''}`, 'Floors');
-        logDebug(`Floor ${floorNumber} status changed: ${previousStatus} -> ${status}`, 'Floors');
+        logDebug(
+          `Floor ${floorNumber} finalized as ${status}` +
+          (winnerCard ? ` with card ${winnerCard.name}` : '') +
+          (committedBy ? ` by ${committedBy}` : ''),
+          'Floors'
+        );
+        logDebug(`Floor ${floorNumber} status changed: ${prevStatus} -> ${status}`, 'Floors');
       });
 
-      // --- Cross-Store Update: Add Card to Building ---
-      if (status === FloorStatus.Agreed && winnerCard) {
+      // 2️⃣ Only if agreed AND we have a card with a valid id, push it into the building
+      if (status === FloorStatus.Agreed && winnerCard?.id) {
         const { addCardToFloor } = useBuildingStore.getState();
         const floorState = get().getFloorState(floorNumber);
 
         if (floorState) {
-          let ownerRole = 'neutral';
+          // Determine ownerRole from committedBy
+          let ownerRole: string = 'neutral';
           if (committedBy === Committer.PlayerA || committedBy === Committer.PlayerB) {
             const { players } = usePlayersStore.getState();
-            const playerIndex = committedBy === Committer.PlayerA ? 0 : 1;
-            if (players[playerIndex]) {
-              ownerRole = players[playerIndex].role;
-            }
-          } else if (committedBy === Committer.Auto) {
-            // Handle auto/mediator case if needed
+            const idx = committedBy === Committer.PlayerA ? 0 : 1;
+            ownerRole = players[idx]?.role ?? 'neutral';
           }
 
-          logDebug(`Adding card to building store: floor=${floorNumber}, card=${winnerCard.id}, ownerRole=${ownerRole}`, 'Floors');
+          logDebug(
+            `Adding card to building store: floor=${floorNumber}, card=${winnerCard.id}, ownerRole=${ownerRole}`,
+            'Floors'
+          );
           addCardToFloor(
             floorNumber,
             winnerCard,
@@ -247,7 +260,10 @@ export const useFloorStore = create<FloorStoreState>()(
             ownerRole
           );
         } else {
-          logDebug(`Error: Could not find floor state ${floorNumber} after finalization to update building store.`, 'Floors');
+          logDebug(
+            `Error: Could not find floor state ${floorNumber} after finalization to update building store.`,
+            'Floors'
+          );
         }
       }
     },

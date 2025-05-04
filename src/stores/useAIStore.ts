@@ -259,94 +259,102 @@ export const useAIStore = create<AIStoreState>()(
      * Determines the current game state and calls the appropriate AI action.
      */
     aiPlayTurn: () => {
+      logDebug(`⚙️ aiPlayTurn() firing for floor ${get().getGameState().currentFloor}`, 'AI');
+
       logDebug(`AI turn beginning`, 'AI');
       // Mark AI as thinking
       get().dispatch({ type: 'SET_THINKING', thinking: true });
-
-      // Run validations synchronously
-      // Fetch necessary state from other stores
-      const { isAiTurn } = useGameFlowStore.getState();
-      const { getCurrentPlayer, getLeadPlayer } = usePlayersStore.getState();
-      const { currentFloor, getCurrentFloorState } = useFloorStore.getState();
-      const { logAction, passProposal } = useGameFlowStore.getState();
-
-      // Pre-computation checks
-      if (!isAiTurn) {
-        logDebug(`Error: Not AI's turn. Aborting AI action.`, 'AI');
-        get().dispatch({ type: 'SET_THINKING', thinking: false });
-        return;
-      }
-
-      const aiPlayer = getCurrentPlayer();
-      if (!aiPlayer || aiPlayer.type !== PlayerType.AI) {
-        logDebug(`Error: Current player is not AI or not found. Skipping turn.`, 'AI');
-        logAction("AI turn error (not AI player). Skipping.");
-        get().dispatch({ type: 'SET_THINKING', thinking: false });
-        return;
-      }
-
-      const currentFloorState = getCurrentFloorState();
-      if (!currentFloorState) {
-        logDebug(`Error: Cannot get current floor state. Skipping turn.`, 'AI');
-        logAction("AI turn error (no floor state). Skipping.");
-        get().dispatch({ type: 'SET_THINKING', thinking: false });
-        return;
-      }
-
-      // Determine AI's role on this floor (lead proposer or responder)
-      const leadPlayer = getLeadPlayer(currentFloor);
-      const isLeadPlayer = aiPlayer.id === leadPlayer?.id;
-
-      const hasProposalA = !!currentFloorState.proposalA;
-      const hasProposalB = !!currentFloorState.proposalB;
-
-      logDebug(`AI turn state: floor=${currentFloor}, isLeadPlayer=${isLeadPlayer}, proposals: A=${hasProposalA}, B=${hasProposalB}, AI: ${aiPlayer.name} (${aiPlayer.role})`, 'AI');
-
-      // Simulate thinking delay with setTimeout 
-      // But make all the decisions and data gathering now
-      const aiActionData = {
-        isLeadPlayer,
-        hasProposalA,
-        hasProposalB,
-        aiPlayer
-      };
-
-      // Determine the action to take after the thinking delay
-      let nextAction: () => void;
-      
-      if (isLeadPlayer && !hasProposalA && !hasProposalB) {
-        // AI is lead player and needs to make initial proposal
-        nextAction = () => get().aiMakeProposal();
-      } else if (!isLeadPlayer && (hasProposalA || hasProposalB) && !(hasProposalA && hasProposalB)) {
-        // AI is responder, and one proposal exists
-        nextAction = () => get().aiRespondToProposal();
-      } else if (isLeadPlayer && hasProposalA && hasProposalB) {
-        // AI is lead player and both proposals exist (opponent made counter)
-        nextAction = () => get().aiDecideOnCounter();
-      } else {
-        // Fallback for unexpected states
-        logDebug(`AI in unexpected state or waiting. Will pass turn. State: isLead=${isLeadPlayer}, propA=${hasProposalA}, propB=${hasProposalB}`, 'AI');
-        nextAction = () => {
-          logAction(`AI (${aiPlayer.name}) is in an unexpected state or has no action. Passing.`);
-          passProposal();
-          get().dispatch({ 
-            type: 'SET_LAST_DECISION',
-            timestamp: Date.now(),
-            action: 'pass',
-            details: 'Unexpected state'
-          });
+    
+      try {
+        // Run validations synchronously
+        // Fetch necessary state from other stores
+        const { isAiTurn } = useGameFlowStore.getState();
+        const { getCurrentPlayer, getLeadPlayer } = usePlayersStore.getState();
+        const { currentFloor, getCurrentFloorState } = useFloorStore.getState();
+        const { logAction, passProposal } = useGameFlowStore.getState();
+    
+        // Pre-computation checks
+        if (!isAiTurn) {
+          logDebug(`Error: Not AI's turn. Aborting AI action.`, 'AI');
           get().dispatch({ type: 'SET_THINKING', thinking: false });
-        };
-      }
+          return;
+        }
+    
+        const aiPlayer = getCurrentPlayer();
+        if (!aiPlayer || aiPlayer.type !== PlayerType.AI) {
+          logDebug(`Error: Current player is not AI or not found. Skipping turn.`, 'AI');
+          logAction("AI turn error (not AI player). Skipping.");
+          get().dispatch({ type: 'SET_THINKING', thinking: false });
+          return;
+        }
+    
+        const currentFloorState = getCurrentFloorState();
+        if (!currentFloorState) {
+          logDebug(`Error: Cannot get current floor state. Skipping turn.`, 'AI');
+          logAction("AI turn error (no floor state). Skipping.");
+          get().dispatch({ type: 'SET_THINKING', thinking: false });
+          return;
+        }
+    
+        // Determine AI's role on this floor (lead proposer or responder)
+        const leadPlayer = getLeadPlayer(currentFloor);
+        const isLeadPlayer = aiPlayer.id === leadPlayer?.id;
+    
+        const hasProposalA = !!currentFloorState.proposalA;
+        const hasProposalB = !!currentFloorState.proposalB;
+    
+        logDebug(`AI turn state: floor=${currentFloor}, isLeadPlayer=${isLeadPlayer}, proposals: A=${hasProposalA}, B=${hasProposalB}, AI: ${aiPlayer.name} (${aiPlayer.role})`, 'AI');
+    
+        logDebug(`Branch logic on floor ${currentFloor}: isLead=${isLeadPlayer}, hasA=${hasProposalA}, hasB=${hasProposalB}`, 'AI');
 
-      // Use the thinking delay
-      const thinkingTime = Math.random() * 500 + 500; // 500-1000ms
-      logDebug(`AI thinking for ${thinkingTime.toFixed(0)}ms...`, 'AI');
-      
-      // Schedule the next action after thinking time
-      setTimeout(() => {
-        nextAction(); 
-      }, thinkingTime);
+        // Determine the action to take after the thinking delay
+        let nextAction: () => void;
+        
+        if (isLeadPlayer && !hasProposalA && !hasProposalB) {
+          // AI is lead player and needs to make initial proposal
+          nextAction = () => get().aiMakeProposal();
+        } else if (!isLeadPlayer && (hasProposalA || hasProposalB) && !(hasProposalA && hasProposalB)) {
+          // AI is responder, and one proposal exists
+          nextAction = () => get().aiRespondToProposal();
+        } else if (isLeadPlayer && hasProposalA && hasProposalB) {
+          // AI is lead player and both proposals exist (opponent made counter)
+          nextAction = () => get().aiDecideOnCounter();
+        } else {
+          // Fallback for unexpected states
+          logDebug(`AI in unexpected state or waiting. Will pass turn. State: isLead=${isLeadPlayer}, propA=${hasProposalA}, propB=${hasProposalB}`, 'AI');
+          nextAction = () => {
+            logAction(`AI (${aiPlayer.name}) is in an unexpected state or has no action. Passing.`);
+            passProposal();
+            get().dispatch({ 
+              type: 'SET_LAST_DECISION',
+              timestamp: Date.now(),
+              action: 'pass',
+              details: 'Unexpected state'
+            });
+            get().dispatch({ type: 'SET_THINKING', thinking: false });
+          };
+        }
+    
+        // Use the thinking delay
+        const thinkingTime = Math.random() * 500 + 500; // 500-1000ms
+        logDebug(`AI thinking for ${thinkingTime.toFixed(0)}ms...`, 'AI');
+        
+        // Schedule the next action after thinking time
+        setTimeout(() => {
+          try {
+            // FIX: Wrap nextAction in try-catch to catch any errors
+            nextAction();
+          } catch (e) {
+            // If an error occurs, log it and make sure we clean up
+            logDebug(`AI action error: ${e}`, 'AI');
+            get().dispatch({ type: 'SET_THINKING', thinking: false });
+          }
+        }, thinkingTime);
+      } catch (e) {
+        // If an error occurs during setup, log it and clean up
+        logDebug(`AI setup error: ${e}`, 'AI');
+        get().dispatch({ type: 'SET_THINKING', thinking: false });
+      }
     },
 
     /**
@@ -370,13 +378,13 @@ export const useAIStore = create<AIStoreState>()(
         get().dispatch({ type: 'SET_THINKING', thinking: false });
         return;
       }
-
+    
       // Log AI's hand for debugging
       logDebug(`AI (${aiPlayer.name}) hand contains ${aiPlayer.hand.length} cards:`, 'AI');
       aiPlayer.hand.forEach((card, i) => {
         logDebug(`  Card ${i + 1}: ${card.name} (ID: ${card.id}, impact: ${card.netScoreImpact})`, 'AI');
       });
-
+    
       // Check if AI can propose
       if (aiPlayer.hand.length === 0) {
         logDebug(`AI has no cards in hand. Passing.`, 'AI');
@@ -392,12 +400,12 @@ export const useAIStore = create<AIStoreState>()(
         get().dispatch({ type: 'SET_THINKING', thinking: false });
         return;
       }
-
+    
       // Use the game state to evaluate cards
       const gameState = get().getGameState();
       let bestCard: CardData | null = null;
       let bestValue = -Infinity;
-
+    
       logDebug(`Evaluating ${aiPlayer.hand.length} cards for proposal using ${strategy.name} strategy`, 'AI');
       for (const card of aiPlayer.hand) {
         const cardValue = strategy.evaluateProposal(card, gameState);
@@ -407,10 +415,11 @@ export const useAIStore = create<AIStoreState>()(
           bestCard = card;
         }
       }
-
+    
       // Execute Proposal - IMPORTANT: Do all selections BEFORE updating state
       if (bestCard) {
-        const cardToPropose = bestCard;
+        // Create a safe copy of the card so we aren't using an Immer proxy that will be revoked
+        const cardToPropose = {...bestCard};
         logDebug(`Selected best card: ${cardToPropose.name} (ID: ${cardToPropose.id}, value: ${bestValue.toFixed(2)})`, 'AI');
         
         // FIX: Create a complete sequence of operations to avoid race conditions
@@ -460,6 +469,7 @@ export const useAIStore = create<AIStoreState>()(
       // IMPORTANT FIX: Capture all external state first
       const aiPlayer = usePlayersStore.getState().getCurrentPlayer();
       const isPlayerA = usePlayersStore.getState().isPlayerA;
+      // CRITICAL FIX: Use the correct selectCounterCard from the players store
       const selectCounterCard = usePlayersStore.getState().selectCounterCard;
       const floorState = useFloorStore.getState().getCurrentFloorState();
       const acceptProposal = useGameFlowStore.getState().acceptProposal;
@@ -467,125 +477,135 @@ export const useAIStore = create<AIStoreState>()(
       const passProposal = useGameFlowStore.getState().passProposal;
       const logAction = useGameFlowStore.getState().logAction;
       const strategy = get().strategy;
-
-      if (!aiPlayer) {
-        logDebug(`Error: aiRespondToProposal - No current AI player found.`, 'AI');
+    
+      if (!aiPlayer || !floorState) {
+        // Early validation
+        logDebug(`Error: No AI player or floor state found`, 'AI');
         get().dispatch({ type: 'SET_THINKING', thinking: false });
         return;
       }
-
-      if (!floorState) {
-        logDebug(`Error: aiRespondToProposal - No floor state found.`, 'AI');
-        get().dispatch({ type: 'SET_THINKING', thinking: false });
-        return;
-      }
-
-      // Get game state 
-      const gameState = get().getGameState();
-
-      // Identify opponent's proposal
+    
+      // Identify opponent's proposal and make a safe copy
       const aiIsPlayerA = isPlayerA(aiPlayer);
       const opponentProposal = aiIsPlayerA ? floorState.proposalB : floorState.proposalA;
-
+    
       if (!opponentProposal) {
-        logDebug(`Error: No opponent proposal found to respond to. State: propA=${!!floorState.proposalA}, propB=${!!floorState.proposalB}, aiIsA=${aiIsPlayerA}. Passing.`, 'AI');
-        logAction(`AI (${aiPlayer.name}) error: No proposal to respond to. Passing.`);
-        passProposal();
-        
-        get().dispatch({ 
-          type: 'SET_LAST_DECISION',
-          timestamp: Date.now(),
-          action: 'pass',
-          details: 'No proposal to respond to'
-        });
+        // FIX: Clear thinking flag in all early returns
+        logDebug(`Error: No opponent proposal found`, 'AI');
         get().dispatch({ type: 'SET_THINKING', thinking: false });
         return;
       }
-
+    
+      // Make a safe copy of the opponent's proposal to avoid proxy issues
+      const opponentProposalCopy = {...opponentProposal};
+      
+      // Capture AI player info before mutations
+      const aiPlayerName = aiPlayer.name;
+      
+      // Get game state (should already do safe copying internally)
+      const gameState = get().getGameState();
+    
       // Decision: Accept?
-      const shouldAccept = strategy.shouldAcceptProposal(opponentProposal, gameState);
+      const shouldAccept = strategy.shouldAcceptProposal(opponentProposalCopy, gameState);
       if (shouldAccept) {
-        logDebug(`AI decides to ACCEPT opponent's proposal: ${opponentProposal.name}`, 'AI');
-        logAIAction(`AI accepts ${opponentProposal.name} (impact: ${(opponentProposal.netScoreImpact ?? 0) > 0 ? '+' : ''}${opponentProposal.netScoreImpact ?? 0})`);
-        logAction(`AI (${aiPlayer.name}) accepts ${opponentProposal.name}.`);
+        logDebug(`AI decides to ACCEPT opponent's proposal: ${opponentProposalCopy.name}`, 'AI');
         
-        // FIX: Execute as one operation
+        // Use only safe primitives and copies in messages
+        logAIAction(`AI accepts ${opponentProposalCopy.name} (impact: ${(opponentProposalCopy.netScoreImpact ?? 0) > 0 ? '+' : ''}${opponentProposalCopy.netScoreImpact ?? 0})`);
+        logAction(`AI (${aiPlayerName}) accepts ${opponentProposalCopy.name}.`);
+        
+        // Execute accept and update - notice we're not using stale object references
         const executeAccept = () => {
-          // Execute accept
-          acceptProposal();
-          
-          // Then update store state
-          get().dispatch({ 
-            type: 'SET_LAST_DECISION',
-            timestamp: Date.now(),
-            action: 'accept',
-            details: opponentProposal.name
-          });
-          get().dispatch({ type: 'SET_THINKING', thinking: false });
+          try {
+            acceptProposal();
+            get().dispatch({ 
+              type: 'SET_LAST_DECISION',
+              timestamp: Date.now(),
+              action: 'accept',
+              details: opponentProposalCopy.name
+            });
+          } catch (e) {
+            logDebug(`AI action error: ${e}`, 'AI');
+          } finally {
+            // FIX: Always clear thinking flag
+            get().dispatch({ type: 'SET_THINKING', thinking: false });
+          }
         };
         
         setTimeout(executeAccept, 50);
         return;
       }
-
+    
       // Decision: Counter-propose?
-      // Log AI's hand for debugging counter selection
-      logDebug(`AI (${aiPlayer.name}) hand for counter-proposal:`, 'AI');
-      aiPlayer.hand.forEach((card, i) => {
-        logDebug(`  Card ${i + 1}: ${card.name} (ID: ${card.id}, impact: ${card.netScoreImpact})`, 'AI');
-      });
-
+      // Use fresh state since we got this far
+      const aiHand = [...aiPlayer.hand]; // Safe copy of hand
+      
       const counterCard = strategy.selectCounterProposal(
-        aiPlayer.hand,
-        opponentProposal,
+        aiHand,
+        opponentProposalCopy,
         gameState
       );
-
+    
       if (counterCard) {
-        logDebug(`AI found a suitable counter-proposal: ${counterCard.name} (ID: ${counterCard.id})`, 'AI');
-        logAIAction(`AI counter-proposes ${counterCard.name} (impact: ${(counterCard.netScoreImpact ?? 0) > 0 ? '+' : ''}${counterCard.netScoreImpact ?? 0})`);
-        logAction(`AI (${aiPlayer.name}) counter-proposes ${counterCard.name}.`);
-
-        // FIX: Execute as one operation
+        // Create a safe copy of the counter card
+        const counterCardCopy = {...counterCard};
+        
+        // Use only safe copies in messages
+        logDebug(`AI found a suitable counter-proposal: ${counterCardCopy.name}`, 'AI');
+        logAIAction(`AI counter-proposes ${counterCardCopy.name} (impact: ${(counterCardCopy.netScoreImpact ?? 0) > 0 ? '+' : ''}${counterCardCopy.netScoreImpact ?? 0})`);
+        logAction(`AI (${aiPlayerName}) counter-proposes ${counterCardCopy.name}.`);
+    
+        // Execute counter
         const executeCounter = () => {
-          // 1. Select counter card
-          selectCounterCard(counterCard.id);
-          
-          // 2. Trigger Counter-Propose Action after card selection
-          counterPropose();
-          
-          // 3. Update state after counter proposal
-          get().dispatch({ 
-            type: 'SET_LAST_DECISION',
-            timestamp: Date.now(),
-            action: 'counter',
-            details: counterCard.name 
-          });
-          get().dispatch({ type: 'SET_THINKING', thinking: false });
+          try {
+            // CRITICAL FIX: Use selectCounterCard, not selectHandCard
+            selectCounterCard(counterCardCopy.id);
+            // Add debug log to verify the counter card is selected
+            logDebug(`About to counter with ID=${counterCardCopy.id}, selectedCounter=${usePlayersStore.getState().selectedCounterCardId}`, 'AI');
+            // Then counter propose - this is the correct sequence
+            counterPropose();
+            
+            get().dispatch({ 
+              type: 'SET_LAST_DECISION',
+              timestamp: Date.now(),
+              action: 'counter',
+              details: counterCardCopy.name 
+            });
+          } catch (e) {
+            logDebug(`AI action error: ${e}`, 'AI');
+          } finally {
+            // FIX: Always clear thinking flag
+            get().dispatch({ type: 'SET_THINKING', thinking: false });
+          }
         };
         
         setTimeout(executeCounter, 50);
         return;
       }
-
-      // Decision: Pass (if not accepting and no counter-proposal made)
-      logDebug(`AI did not accept and could not/did not counter. Passing.`, 'AI');
+    
+      // Decision: Pass
+      // Use only primitives or safe copies after any mutations
+      logDebug(`AI did not accept and could not counter. Passing.`, 'AI');
       logAIAction(`AI passes (no suitable counter-proposal or chose not to)`);
-      logAction(`AI (${aiPlayer.name}) passes on floor ${useFloorStore.getState().currentFloor}.`);
+      logAction(`AI (${aiPlayerName}) passes on floor ${useFloorStore.getState().currentFloor}.`);
       
-      // FIX: Execute as one operation
+      // Execute pass
       const executePass = () => {
-        // Execute the pass action
-        passProposal();
-        
-        // Then update state
-        get().dispatch({ 
-          type: 'SET_LAST_DECISION',
-          timestamp: Date.now(),
-          action: 'pass',
-          details: 'Did not accept or counter'
-        });
-        get().dispatch({ type: 'SET_THINKING', thinking: false });
+        try {
+          passProposal();
+          
+          get().dispatch({ 
+            type: 'SET_LAST_DECISION',
+            timestamp: Date.now(),
+            action: 'pass',
+            details: 'Did not accept or counter'
+          });
+        } catch (e) {
+          logDebug(`AI action error: ${e}`, 'AI');
+        } finally {
+          // FIX: Always clear thinking flag
+          get().dispatch({ type: 'SET_THINKING', thinking: false });
+        }
       };
       
       setTimeout(executePass, 50);
@@ -630,10 +650,14 @@ export const useAIStore = create<AIStoreState>()(
       // Get game state and strategy
       const gameState = get().getGameState();
 
+      // Create safe copies of proposals to avoid proxy issues
+      const proposalACopy = {...floorState.proposalA};
+      const proposalBCopy = {...floorState.proposalB};
+
       // Identify which proposal is AI's and which is opponent's counter
       const isAiPlayerA = isPlayerA(aiPlayer);
-      const aiOriginalProposal = isAiPlayerA ? floorState.proposalA : floorState.proposalB;
-      const opponentCounterProposal = isAiPlayerA ? floorState.proposalB : floorState.proposalA;
+      const aiOriginalProposal = isAiPlayerA ? proposalACopy : proposalBCopy;
+      const opponentCounterProposal = isAiPlayerA ? proposalBCopy : proposalACopy;
 
       // Evaluate Both Proposals
       const aiProposalValue = strategy.evaluateProposal(aiOriginalProposal, gameState);

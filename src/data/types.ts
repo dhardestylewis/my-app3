@@ -31,6 +31,7 @@ export interface CardData {
   // Sizing & placement
   baseSqft?: number;                
   minSqft?: number;                
+  minimumSqft?: number;
   requiresFloor?: number[];        
   
   // Card-specific metadata

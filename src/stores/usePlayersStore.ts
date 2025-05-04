@@ -68,6 +68,7 @@ export interface PlayersStoreState {
   completeInitialDeal: () => void; // Called by UI when initial animation finishes
   logPlayerState: () => void;
   resetToDefaults: () => void;
+  moveCardsFromDeckToHand: (cardIds: string[]) => void;
   
   /* New Actions */
   bumpDeckVersion: () => void; // Manually trigger a deckVersion increment
@@ -426,20 +427,24 @@ export const usePlayersStore = create<PlayersStoreState>()(
       /** Draws a card from the deck for the current player during their turn. */
       drawCard: (): CardData | undefined => {
         let drawnCard: CardData | undefined;
-        set((state: PlayersStoreState): void => {
-          const player: Player | null = _getPlayerByIndex(
+        
+        // Get the player state safely before mutations
+        const currentPlayerIndex = usePlayersStore.getState().currentPlayerIndex;
+        const currentPlayerName = usePlayersStore.getState().getCurrentPlayer()?.name || "Unknown";
+        
+        set(state => {
+          const player = _getPlayerByIndex(
             state,
             state.currentPlayerIndex,
             "drawCard"
           );
           if (!player) return;
-
+      
           if (state.deck.length === 0) {
             logDebug(`Cannot draw card: Deck is empty.`, "PlayersStore");
-            // Optionally handle deck empty state (e.g., shuffle discard pile if exists)
             return;
           }
-
+      
           if (player.hand.length >= MAX_HAND_SIZE) {
             logDebug(
               `Cannot draw card for ${player.id}: Hand is full (${player.hand.length}/${MAX_HAND_SIZE}).`,
@@ -447,19 +452,100 @@ export const usePlayersStore = create<PlayersStoreState>()(
             );
             return;
           }
-
-          drawnCard = state.deck.pop();
-          if (drawnCard) {
-            player.hand.push(drawnCard);
+      
+          // Draw the card inside the set operation
+          const card = state.deck.pop();
+          if (card) {
+            // Copy the card as we pop it
+            drawnCard = { ...card };
+            player.hand.push(card);
             state.deckVersion += 1; // Increment deckVersion on card draw
-            logDebug(`${player.name} drew ${drawnCard.name}`, "PlayersStore");
-            logDebug(
-              `Card drawn: ${drawnCard.id} for player ${player.id}. Deck: ${state.deck.length}. Hand: ${player.hand.length}.`,
+          }
+        });
+        
+        // Use drawnCard (our safe copy) after the mutation
+        if (drawnCard) {
+          // Here we access the currentPlayerName we captured before the mutation
+          logDebug(`${currentPlayerName} drew ${drawnCard.name}`, "PlayersStore");
+          logDebug(
+            `Card drawn: ${drawnCard.id} for player at index ${currentPlayerIndex}. Deck remaining: ${usePlayersStore.getState().deck.length}.`,
+            "PlayersStore"
+          );
+        }
+        
+        return drawnCard;
+      },
+
+      /**
+       * Moves selected cards from the deck to the current player's hand
+       */
+      moveCardsFromDeckToHand: (cardIds: string[]): void => {
+        if (!Array.isArray(cardIds) || cardIds.length === 0) {
+          logDebug(`moveCardsFromDeckToHand: No card IDs provided`, "PlayersStore");
+          return;
+        }
+
+        // Get the human player
+        const humanPlayer = get().getHumanPlayer();
+        if (!humanPlayer) {
+          logError(`moveCardsFromDeckToHand: Cannot find human player`, "PlayersStore");
+          return;
+        }
+
+        // Check for hand size limit
+        const availableSlots = MAX_HAND_SIZE - humanPlayer.hand.length;
+        if (availableSlots <= 0) {
+          logDebug(`moveCardsFromDeckToHand: Hand is already full (${humanPlayer.hand.length}/${MAX_HAND_SIZE})`, "PlayersStore");
+          return;
+        }
+
+        // Limit the number of cards to available slots
+        const limitedCardIds = cardIds.slice(0, availableSlots);
+        if (limitedCardIds.length < cardIds.length) {
+          logDebug(`moveCardsFromDeckToHand: Limited to ${limitedCardIds.length} cards due to hand size constraints`, "PlayersStore");
+        }
+
+        // Make changes inside set function
+        set((state: PlayersStoreState): void => {
+          // Find the cards in the deck
+          const cardsToMove: CardData[] = [];
+          const remainingDeck: CardData[] = [];
+          
+          // Split the deck into cards to move and remaining cards
+          for (const card of state.deck) {
+            if (limitedCardIds.includes(card.id)) {
+              cardsToMove.push(card);
+            } else {
+              remainingDeck.push(card);
+            }
+          }
+          
+          // Verify all requested cards were found
+          if (cardsToMove.length !== limitedCardIds.length) {
+            logError(
+              `moveCardsFromDeckToHand: Not all cards were found in deck. Found ${cardsToMove.length}/${limitedCardIds.length}`,
               "PlayersStore"
             );
           }
+          
+          // Find the human player index
+          const humanIndex = state.players.findIndex(p => p.type === PlayerType.Human);
+          if (humanIndex === -1) {
+            logError(`moveCardsFromDeckToHand: Cannot find human player index`, "PlayersStore");
+            return;
+          }
+          
+          // Add cards to hand and update deck
+          state.players[humanIndex].hand.push(...cardsToMove);
+          state.deck = remainingDeck;
+          state.deckVersion += 1; // Increment to trigger updates
         });
-        return drawnCard;
+        
+        // Log success
+        logDebug(
+          `moveCardsFromDeckToHand: Moved ${limitedCardIds.length} cards to ${humanPlayer.name}'s hand. Deck: ${get().deck.length} cards remaining`,
+          "PlayersStore"
+        );
       },
 
       /** Removes a specified card from a player's hand (when played). */

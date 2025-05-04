@@ -1,6 +1,6 @@
 'use client';
 
-// src/components/negotiation/NegotiationPanel.tsx (or your path)
+// src/components/NegotiationPanel.tsx (or your path)
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useFloorStore } from '@/stores/useFloorStore';

@@ -2,21 +2,14 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import { CardData } from "@/data/types";
-import { BALANCE_THRESHOLD, RECALL_SCORE_PENALTY, MAX_STORIES, PROPOSAL_TIMER_MS as PROPOSAL_TIMER, AI_TURN_DELAY_MS } from '@/data/constants';
+import { BALANCE_THRESHOLD, RECALL_SCORE_PENALTY, MAX_STORIES, MAX_HAND_SIZE, PROPOSAL_TIMER_MS as PROPOSAL_TIMER, AI_TURN_DELAY_MS } from '@/data/constants';
 import { usePlayersStore, PlayerRole, PlayerType } from './usePlayersStore';
 import { useFloorStore, FloorStatus, Committer } from './useFloorStore';
 import { useBuildingStore } from './useBuildingStore';
 import { useTelemetryStore } from './useTelemetryStore';
 import { useAIStore } from './useAIStore';
-// Imports for logging and validation
 import { logDebug, logError } from '@/utils/logger';
 import { validationFailed, validateAll, validateGamePhase, validateNotDealing } from '@/utils/validation';
-
-// Import the game engine
-import { GameEngine } from '@/engine/GameEngine';
-
-// Create a single instance of the engine to use throughout the store
-const gameEngine = new GameEngine();
 
 export enum GamePhase {
   Title = 'title',
@@ -31,7 +24,6 @@ export interface GameWinResult {
 }
 
 interface GameFlowStoreState {
-  // State
   gamePhase: GamePhase;
   isAiTurn: boolean;
   gameLog: string[];
@@ -40,7 +32,6 @@ interface GameFlowStoreState {
   negotiationStartTime: number | null;
   proposalTimer: number | null;
 
-  // Actions
   startGame: (humanPlayerRole: PlayerRole) => void;
   resetGame: () => void;
   logAction: (message: string) => void;
@@ -53,8 +44,8 @@ interface GameFlowStoreState {
   mediateProposals: (floorNumber: number) => CardData | undefined;
   drawCard: () => void;
   toggleAiTurn: () => void;
+  canAccessDeckSelector: () => boolean;
 
-  // Evaluation
   evaluateGameEnd: () => GameWinResult;
   determineWinner: (finalScore: number) => 'developer' | 'community' | 'balanced';
   checkImpossibleFinish: () => boolean;
@@ -68,7 +59,6 @@ interface GameFlowStoreState {
 
 export const useGameFlowStore = create<GameFlowStoreState>()(
   immer((set, get) => ({
-    // State
     gamePhase: GamePhase.Title,
     isAiTurn: false,
     gameLog: ["Welcome to Urban Balance"],
@@ -77,32 +67,28 @@ export const useGameFlowStore = create<GameFlowStoreState>()(
     negotiationStartTime: null,
     proposalTimer: PROPOSAL_TIMER,
 
-    // Actions
     startGame: (humanPlayerRole) => {
       logDebug(`Starting new game: Player selected ${humanPlayerRole} role`, 'GameFlow');
       logDebug(`Game initialization beginning`, 'GameFlow');
 
-      // Reset all relevant stores
-      const { initializePlayers, getCurrentPlayer } = usePlayersStore.getState();
+      const { initializePlayers } = usePlayersStore.getState();
       const { initializeFloors } = useFloorStore.getState();
       const { resetBuilding } = useBuildingStore.getState();
       const { resetTelemetry } = useTelemetryStore.getState();
 
-      // Initialize stores
       initializePlayers(humanPlayerRole);
       initializeFloors();
       resetBuilding();
       resetTelemetry();
 
-      // Get fresh state after initializations
       const currentPlayer = usePlayersStore.getState().getCurrentPlayer();
       const isAiTurn = currentPlayer?.type === PlayerType.AI;
       const aiRole = humanPlayerRole === PlayerRole.Developer ? PlayerRole.Community : PlayerRole.Developer;
+      const baselineScore = useBuildingStore.getState().building.baselineScore;
 
-      // Log initial game state info
       const startMessages = [
         `Game started. You: ${humanPlayerRole}. AI: ${aiRole}.`,
-        `Starting score: ${useBuildingStore.getState().building.baselineScore} (city climate requirements).`,
+        `Starting score: ${baselineScore} (city climate requirements).`,
         `You are Player ${currentPlayer?.isLeadPlayer ? 'A' : 'B'}. Player A leads floors 1-5, Player B leads floors 6-10, etc.`,
         `Each player has ${usePlayersStore.getState().players[0]?.recallTokens} recall tokens to reopen floors.`,
         `Goal: Keep final score within ±${BALANCE_THRESHOLD} for a balanced project.`,
@@ -110,7 +96,6 @@ export const useGameFlowStore = create<GameFlowStoreState>()(
       ];
       startMessages.forEach(msg => logDebug(msg, 'GameFlow'));
 
-      // Initialize game state
       set(state => {
         state.gamePhase = GamePhase.Playing;
         state.isAiTurn = isAiTurn;
@@ -121,28 +106,24 @@ export const useGameFlowStore = create<GameFlowStoreState>()(
         state.proposalTimer = PROPOSAL_TIMER;
       });
 
-      // Trigger AI turn if AI starts
       if (isAiTurn) {
         logDebug(`AI starts the game. Preparing AI turn...`, 'GameFlow');
         setTimeout(() => {
-          // Make sure we're still in playing state before triggering AI
           if (get().gamePhase === GamePhase.Playing && get().isAiTurn) {
             logDebug(`Triggering AI turn after startup delay`, 'GameFlow');
             useAIStore.getState().aiPlayTurn();
           }
-        }, 1000);
+        }, AI_TURN_DELAY_MS);
       }
     },
 
     resetGame: () => {
       logDebug(`Game reset requested`, 'GameFlow');
-      // Reset logger state if the clear method exists
       const telemetryState = useTelemetryStore.getState() as { clear?: () => void };
       if (typeof telemetryState.clear === 'function') {
         telemetryState.clear();
       }
 
-      // Using proper immer pattern
       set(state => {
         state.gamePhase = GamePhase.Title;
         state.isAiTurn = false;
@@ -157,26 +138,19 @@ export const useGameFlowStore = create<GameFlowStoreState>()(
     },
 
     logAction: (message) => {
-      // Call the centralized logger
       logDebug(message, 'GameEvent');
-
-      // Also update the local gameLog for backward compatibility
       set(state => {
-        state.gameLog = [message, ...state.gameLog.slice(0, 49)];  // Keep last 50 messages
+        state.gameLog = [message, ...state.gameLog.slice(0, 49)];
       });
     },
 
     drawCard: () => {
-      // Only proceed if game is playing and it's not AI's turn
       if (get().gamePhase !== GamePhase.Playing || get().isAiTurn) {
         logDebug(`Draw card rejected: gamePhase=${get().gamePhase}, isAiTurn=${get().isAiTurn}`, 'GameFlow');
         return;
       }
 
-      // Always get fresh state
       const playersState = usePlayersStore.getState();
-      
-      // Check if cards are still being dealt
       if (playersState.cardsBeingDealt) {
         get().logAction('Please wait for initial cards to be dealt.');
         logDebug(`Draw card rejected: Initial dealing in progress`, 'GameFlow');
@@ -196,224 +170,192 @@ export const useGameFlowStore = create<GameFlowStoreState>()(
     },
 
     proposeCard: () => {
-      // Step 1: Get FRESH state from stores (not stored in closure)
-      const playersState = usePlayersStore.getState(); 
+      const playersState = usePlayersStore.getState();
       const floorState = useFloorStore.getState();
-      
-      // Extract what we need from current state
-      const selectedHandCardId = playersState.selectedHandCardId;
-      const currentFloor = floorState.currentFloor;
-      const { getCurrentPlayer, playCardFromHand, getLeadPlayer, currentPlayerIndex, cardsBeingDealt } = playersState;
-      const { setProposal } = floorState;
+      const {
+        selectedHandCardId,
+        currentPlayerIndex,
+        cardsBeingDealt,
+        getCurrentPlayer,
+        playCardFromHand,
+        getLeadPlayer,
+        isPlayerA,
+        setCurrentPlayerIndex,
+        selectHandCard
+      } = playersState;
+      const { currentFloor, setProposal, getCurrentFloorState } = floorState;
 
-      // Debug log current state
-      logDebug(`proposeCard called: selectedHandCardId=${selectedHandCardId}, currentFloor=${currentFloor}, isAiTurn=${get().isAiTurn}`, 'GameFlow');
-
-      // Improved validation to identify exact issues
       if (get().gamePhase !== GamePhase.Playing) {
-        logDebug(`Propose card rejected: incorrect game phase ${get().gamePhase}`, 'GameFlow');
+        logDebug(`proposeCard rejected: wrong phase ${get().gamePhase}`, 'GameFlow');
         return;
       }
-
       if (!selectedHandCardId) {
-        logDebug(`Propose card rejected: no card selected`, 'GameFlow');
+        logDebug(`proposeCard rejected: no card selected`, 'GameFlow');
         return;
       }
-
       if (cardsBeingDealt) {
-        logDebug(`Propose card rejected: cards are being dealt`, 'GameFlow');
+        logDebug(`proposeCard rejected: dealing in progress`, 'GameFlow');
         return;
       }
 
-      const currentPlayer = getCurrentPlayer();
-      if (!currentPlayer) {
-        logDebug(`Propose card rejected: no current player found`, 'GameFlow');
+      const player = getCurrentPlayer();
+      if (!player) {
+        logDebug(`proposeCard rejected: no current player`, 'GameFlow');
+        return;
+      }
+      const lead = getLeadPlayer(currentFloor);
+      if (!lead || lead.id !== player.id) {
+        logDebug(`proposeCard rejected: not lead player`, 'GameFlow');
         return;
       }
 
-      const leadPlayer = getLeadPlayer(currentFloor);
-      if (!leadPlayer) {
-        logDebug(`Propose card rejected: no lead player identified for floor ${currentFloor}`, 'GameFlow');
-        return;
-      }
-
-      if (currentPlayer.id !== leadPlayer.id) {
-        logDebug(`Propose card rejected: current player ${currentPlayer.id} is not lead player ${leadPlayer.id}`, 'GameFlow');
-        return;
-      }
-
-      // Check if the card exists in the player's hand
-      const cardExists = currentPlayer.hand.some(card => card.id === selectedHandCardId);
-      if (!cardExists) {
-        logDebug(`Propose card rejected: selected card ${selectedHandCardId} not found in player's hand`, 'GameFlow');
-        return;
-      }
-
-      // Step 2: First get the card data BEFORE removing it from hand
-      // This ensures we have a proper card object that won't be revoked
-      const isPlayerA = playersState.isPlayerA(currentPlayer);
-      
-      // Create a shallow copy of the card object to avoid revoked proxy issues
-      // (This is critical for fixing the error!)
-      const cardToPlay = {...currentPlayer.hand.find(card => card.id === selectedHandCardId)!};
-      
+      const hand = player.hand;
+      const cardToPlay = hand.find(c => c.id === selectedHandCardId);
       if (!cardToPlay) {
-        logDebug(`Propose card rejected: failed to find card ${selectedHandCardId} in hand`, 'GameFlow');
+        logDebug(`proposeCard rejected: card ${selectedHandCardId} not in hand`, 'GameFlow');
         return;
       }
-      
-      // Step 3: AFTER we have a safe copy, now remove it from the hand
-      const playedCard = playCardFromHand(currentPlayerIndex, selectedHandCardId);
+      const cardCopy = { ...cardToPlay };
 
-      if (!playedCard) {
-        logDebug(`Propose card rejected: failed to play card ${selectedHandCardId} from hand`, 'GameFlow');
-        return;
+      playCardFromHand(currentPlayerIndex, selectedHandCardId);
+      setProposal(isPlayerA(player), cardCopy);
+
+      const floorSnapshot = getCurrentFloorState();
+      const proposalCheck = isPlayerA(player)
+        ? floorSnapshot?.proposalA
+        : floorSnapshot?.proposalB;
+      if (!proposalCheck) {
+        logDebug(`Warning: proposal not set correctly`, 'GameFlow');
       }
 
-      // Step 4: Update floor state with our copy to avoid proxy issues
-      setProposal(isPlayerA, cardToPlay);
-
-      // Verify proposal was set correctly
-      const verifyFloorState = useFloorStore.getState().getCurrentFloorState();
-      const proposalSet = isPlayerA ? verifyFloorState?.proposalA : verifyFloorState?.proposalB;
-
-      if (!proposalSet) {
-        logDebug(`Warning: Proposal may not have been set correctly. Attempted to set ${isPlayerA ? 'proposalA' : 'proposalB'} but verification failed.`, 'GameFlow');
-      } else {
-        logDebug(`Proposal verification successful: ${proposalSet.name} set as ${isPlayerA ? 'proposalA' : 'proposalB'}`, 'GameFlow');
-      }
-
-      // Log the action
       get().logAction(
-        `${currentPlayer.name} proposes ${playedCard.name} for floor ${currentFloor}.`
+        `${player.name} proposes ${cardCopy.name} for floor ${currentFloor}.`
       );
-      logDebug(`Card proposed: player=${currentPlayer.id}, card=${playedCard.id}, isPlayerA=${isPlayerA}, floor=${currentFloor}`, 'GameFlow');
+      logDebug(
+        `proposeCard: player=${player.id}, card=${cardCopy.id}, floor=${currentFloor}`,
+        'GameFlow'
+      );
 
-      // Step 5: Switch to responding player
-      // Always get fresh state again
-      const respondingPlayer = usePlayersStore.getState().getRespondingPlayer(currentFloor);
-      if (!respondingPlayer) {
-        logDebug(`Error: No responding player found for floor ${currentFloor}`, 'GameFlow');
+      const responder = usePlayersStore.getState().getRespondingPlayer(currentFloor);
+      if (!responder) {
+        logDebug(`Error: no responder for floor ${currentFloor}`, 'GameFlow');
         return;
       }
-
-      const nextPlayerIndex = usePlayersStore.getState().players.findIndex(
-        p => p.id === respondingPlayer.id
-      );
-
-      usePlayersStore.getState().setCurrentPlayerIndex(nextPlayerIndex);
-      usePlayersStore.getState().selectHandCard(null); // Clear selection
+      const nextIdx = usePlayersStore.getState()
+        .players.findIndex(p => p.id === responder.id);
+      setCurrentPlayerIndex(nextIdx);
+      selectHandCard(null);
 
       set(state => {
-        state.isAiTurn = respondingPlayer.type === PlayerType.AI;
+        state.isAiTurn = responder.type === PlayerType.AI;
         state.negotiationStartTime = Date.now();
-        state.proposalTimer = PROPOSAL_TIMER; // Reset timer when switching turns
+        state.proposalTimer = PROPOSAL_TIMER;
       });
 
-      get().logAction(`${respondingPlayer.name} to accept, counter, or pass.`);
-      logDebug(`Turn passed to responding player: player=${respondingPlayer.id}, isAI=${respondingPlayer.type === PlayerType.AI}`, 'GameFlow');
+      get().logAction(`${responder.name} to accept, counter, or pass.`);
+      logDebug(
+        `Turn passed to player=${responder.id} (AI=${responder.type === PlayerType.AI})`,
+        'GameFlow'
+      );
 
-      // Increased delay for AI turn to ensure UI updates properly
-      if (respondingPlayer.type === PlayerType.AI) {
-        logDebug(`AI turn required. Scheduling AI response with increased delay...`, 'GameFlow');
+      if (responder.type === PlayerType.AI) {
         setTimeout(() => {
-          // Safety check - make sure we're still in playing state
           if (get().gamePhase === GamePhase.Playing && get().isAiTurn) {
-            logDebug(`Triggering scheduled AI turn for response`, 'GameFlow');
             useAIStore.getState().aiPlayTurn();
           }
-        }, 1500); // Increased from 1000ms to 1500ms for better UI sync
+        }, 1500);
       }
     },
 
     counterPropose: () => {
-      // Always get fresh state instead of capturing in closure
-      const playersState = usePlayersStore.getState();
-      const floorState = useFloorStore.getState();
-      
+      const playerStore = usePlayersStore.getState();
+      const floorStore = useFloorStore.getState();
+
       const {
         currentPlayerIndex,
         selectedCounterCardId,
         getCurrentPlayer,
-        playCardFromHand,
         getRespondingPlayer,
-        cardsBeingDealt
-      } = playersState;
+        playCardFromHand,
+        selectCounterCard,
+        setCurrentPlayerIndex,
+        cardsBeingDealt,
+        isPlayerA,
+      } = playerStore;
+      const { currentFloor, setProposal } = floorStore;
 
-      const { currentFloor, setProposal } = floorState;
+      logDebug(
+        `counterPropose called: card=${selectedCounterCardId}, floor=${currentFloor}`,
+        'GameFlow'
+      );
 
-      // Debug logging
-      logDebug(`counterPropose called: selectedCounterCardId=${selectedCounterCardId}, currentFloor=${currentFloor}, isAiTurn=${get().isAiTurn}`, 'GameFlow');
+      if (
+        get().gamePhase !== GamePhase.Playing ||
+        get().isAiTurn ||
+        cardsBeingDealt ||
+        !selectedCounterCardId
+      ) {
+        logDebug('Counter-propose rejected: invalid state or no card selected', 'GameFlow');
+        return;
+      }
 
-      // Validation
       const currentPlayer = getCurrentPlayer();
-      const respondingPlayer = getRespondingPlayer(currentFloor);
-      
-      if (get().gamePhase !== GamePhase.Playing || 
-          get().isAiTurn || 
-          !selectedCounterCardId || 
-          cardsBeingDealt || 
-          !currentPlayer || 
-          currentPlayer.id !== respondingPlayer?.id) {
-        logDebug(`Counter-propose rejected: validation failed (phase=${get().gamePhase}, isAiTurn=${get().isAiTurn}, cardSelected=${!!selectedCounterCardId}, dealing=${cardsBeingDealt}, isResponder=${currentPlayer?.id === respondingPlayer?.id})`, 'GameFlow');
+      const responder = getRespondingPlayer(currentFloor);
+
+      if (!currentPlayer || currentPlayer.id !== responder?.id) {
+        logDebug('Counter-propose rejected: not current responder', 'GameFlow');
         return;
       }
 
-      // Create a safe copy of the card before removing it from hand
-      const cardToPlay = {...currentPlayer.hand.find(card => card.id === selectedCounterCardId)!};
-      
-      if (!cardToPlay) {
-        logDebug(`Counter-propose rejected: failed to find card ${selectedCounterCardId} in hand`, 'GameFlow');
+      const playerIsA = isPlayerA(currentPlayer);
+      const playerName = currentPlayer.name;
+      const handCard = currentPlayer.hand.find(c => c.id === selectedCounterCardId);
+      if (!handCard) {
+        logDebug(`Counter-propose rejected: card ${selectedCounterCardId} not in hand`, 'GameFlow');
         return;
       }
-      
-      const isPlayerA = playersState.isPlayerA(currentPlayer);
-      const playedCard = playCardFromHand(currentPlayerIndex, selectedCounterCardId);
+      const cardCopy = { ...handCard };
 
-      if (!playedCard) {
-        logDebug(`Counter-propose rejected: card ${selectedCounterCardId} not found in hand for player ${currentPlayer.id}`, 'GameFlow');
+      const played = playCardFromHand(currentPlayerIndex, selectedCounterCardId);
+      if (!played) {
+        logDebug(`Counter-propose rejected: failed to play ${selectedCounterCardId}`, 'GameFlow');
         return;
       }
+      setProposal(playerIsA, cardCopy);
 
-      // Update floor state with counter-proposal (using our safe copy)
-      setProposal(isPlayerA, cardToPlay);
-
-      // Log the action
       get().logAction(
-        `${currentPlayer.name} counter-proposes ${playedCard.name} for floor ${currentFloor}.`
+        `${playerName} counter-proposes ${cardCopy.name} for floor ${currentFloor}.`
       );
-      logDebug(`Counter-proposal made: player=${currentPlayer.id}, card=${playedCard.id}, isPlayerA=${isPlayerA}, floor=${currentFloor}`, 'GameFlow');
+      logDebug(
+        `Counter-proposal: player=${currentPlayer.id}, card=${cardCopy.id}`,
+        'GameFlow'
+      );
 
-      // Switch back to lead player - get fresh state again
-      const leadPlayer = usePlayersStore.getState().getLeadPlayer(currentFloor);
-      if (!leadPlayer) {
-        logDebug(`Error: No lead player found for floor ${currentFloor}`, 'GameFlow');
+      const freshPlayers = usePlayersStore.getState();
+      const lead = freshPlayers.getLeadPlayer(currentFloor);
+      if (!lead) {
+        logDebug(`Error: lead player missing on floor ${currentFloor}`, 'GameFlow');
         return;
       }
-
-      const nextPlayerIndex = usePlayersStore.getState().players.findIndex(
-        p => p.id === leadPlayer.id
-      );
-
-      usePlayersStore.getState().setCurrentPlayerIndex(nextPlayerIndex);
-      usePlayersStore.getState().selectCounterCard(null); // Clear selection
+      const nextIndex = freshPlayers.players.findIndex(p => p.id === lead.id);
+      setCurrentPlayerIndex(nextIndex);
+      selectCounterCard(null);
 
       set(state => {
-        state.isAiTurn = leadPlayer.type === PlayerType.AI;
+        state.isAiTurn = lead.type === PlayerType.AI;
         state.negotiationStartTime = Date.now();
-        state.proposalTimer = PROPOSAL_TIMER; // Reset timer when switching turns
+        state.proposalTimer = PROPOSAL_TIMER;
       });
 
-      get().logAction(`${leadPlayer.name} to accept counter-offer or let AI mediate.`);
-      logDebug(`Turn passed back to lead player: player=${leadPlayer.id}, isAI=${leadPlayer.type === PlayerType.AI}`, 'GameFlow');
+      get().logAction(`${lead.name} to accept counter-offer or pass.`);
+      logDebug(
+        `Turn passed to lead player ${lead.id} (AI=${lead.type === PlayerType.AI})`,
+        'GameFlow'
+      );
 
-      // Trigger AI turn if needed
-      if (leadPlayer.type === PlayerType.AI) {
-        logDebug(`AI turn required for counter-response. Scheduling AI action...`, 'GameFlow');
+      if (lead.type === PlayerType.AI) {
         setTimeout(() => {
-          // Safety check - make sure we're still in playing state
           if (get().gamePhase === GamePhase.Playing && get().isAiTurn) {
-            logDebug(`Triggering scheduled AI turn for counter-response`, 'GameFlow');
             useAIStore.getState().aiPlayTurn();
           }
         }, 1000);
@@ -421,144 +363,94 @@ export const useGameFlowStore = create<GameFlowStoreState>()(
     },
 
     acceptProposal: () => {
-      // Always get fresh state
       const playersState = usePlayersStore.getState();
       const floorState = useFloorStore.getState();
-      
-      const {
-        getCurrentPlayer,
-        isPlayerA,
-        cardsBeingDealt
-      } = playersState;
+      const { getCurrentPlayer, isPlayerA, cardsBeingDealt } = playersState;
+      const { currentFloor, getCurrentFloorState, finalizeFloor } = floorState;
 
-      const {
-        currentFloor,
-        getCurrentFloorState,
-        finalizeFloor
-      } = floorState;
+      logDebug(`acceptProposal invoked (floor ${currentFloor})`, 'GameFlow');
 
-      logDebug(`acceptProposal called: currentFloor=${currentFloor}, isAiTurn=${get().isAiTurn}`, 'GameFlow');
-
-      // Validation
-      if (get().gamePhase !== GamePhase.Playing || get().isAiTurn || cardsBeingDealt) {
-        logDebug(`Accept proposal rejected: validation failed (phase=${get().gamePhase}, isAiTurn=${get().isAiTurn}, dealing=${cardsBeingDealt})`, 'GameFlow');
+      if (get().gamePhase !== GamePhase.Playing || cardsBeingDealt) {
+        logDebug('acceptProposal aborted – not in playable state', 'GameFlow');
         return;
       }
-
       const currentPlayer = getCurrentPlayer();
-      if (!currentPlayer) {
-        logDebug(`Accept proposal rejected: no current player`, 'GameFlow');
+      const currentFloorData = getCurrentFloorState();
+      if (!currentPlayer || !currentFloorData) {
+        logDebug('acceptProposal aborted – missing player or floor data', 'GameFlow');
         return;
       }
 
-      const floorStateObj = getCurrentFloorState();
-      if (!floorStateObj) {
-        logDebug(`Accept proposal rejected: no current floor state`, 'GameFlow');
+      const { proposalA, proposalB } = currentFloorData;
+      let acceptedCard: CardData | undefined;
+      let committer: Committer | null = null;
+
+      if (proposalA && proposalB) {
+        if (isPlayerA(currentPlayer)) {
+          acceptedCard = proposalB;
+          committer = Committer.PlayerB;
+        } else {
+          acceptedCard = proposalA;
+          committer = Committer.PlayerA;
+        }
+      } else if (proposalA && !isPlayerA(currentPlayer)) {
+        acceptedCard = proposalA;
+        committer = Committer.PlayerA;
+      } else if (proposalB && isPlayerA(currentPlayer)) {
+        acceptedCard = proposalB;
+        committer = Committer.PlayerB;
+      }
+
+      if (!acceptedCard || committer === null) {
+        logDebug(`acceptProposal aborted – could not determine card to accept or committer. Player: ${currentPlayer.id}, isA: ${isPlayerA(currentPlayer)}, propA: ${!!proposalA}, propB: ${!!proposalB}`, 'GameFlow');
         return;
       }
 
-      const isLeadPlayer = currentPlayer.id === usePlayersStore.getState().getLeadPlayer(currentFloor)?.id;
-      const isAcceptingCounter = isLeadPlayer && !!floorStateObj.proposalA && !!floorStateObj.proposalB;
+      const acceptedCardCopy = { ...acceptedCard };
 
-      // Log decision context
-      logDebug(`Player accepting: player=${currentPlayer.id}, isLeadPlayer=${isLeadPlayer}, isAcceptingCounter=${isAcceptingCounter}`, 'GameFlow');
+      get().logAction(`${currentPlayer.name} accepted ${acceptedCardCopy.name} for floor ${currentFloor}.`);
+      logDebug(`Accepted card ${acceptedCardCopy.id} committed by ${committer}`, 'GameFlow');
 
-      // Determine which proposal is being accepted (and make a safe copy)
-      let acceptedProposal: CardData;
-      
-      if (isAcceptingCounter) {
-        // Lead accepting responder's counter proposal
-        acceptedProposal = isPlayerA(currentPlayer) ? 
-          {...floorStateObj.proposalB!} as CardData : 
-          {...floorStateObj.proposalA!} as CardData;
-      } else {
-        // Responder accepting initial proposal
-        acceptedProposal = isPlayerA(currentPlayer) ? 
-          {...floorStateObj.proposalA!} as CardData : 
-          {...floorStateObj.proposalB!} as CardData;
-      }
+      finalizeFloor(currentFloor, FloorStatus.Agreed, acceptedCardCopy, committer);
 
-      if (!acceptedProposal) {
-        logDebug(`Accept proposal rejected: no proposal found to accept (acceptingCounter=${isAcceptingCounter}, proposalA=${!!floorStateObj.proposalA}, proposalB=${!!floorStateObj.proposalB})`, 'GameFlow');
-        return;
-      }
-
-      // Determine who committed based on who accepted what
-      const committedBy = isAcceptingCounter
-        ? (isPlayerA(currentPlayer) ? Committer.PlayerB : Committer.PlayerA) // Lead accepts responder's card
-        : (isPlayerA(currentPlayer) ? Committer.PlayerA : Committer.PlayerB); // Responder accepts lead's card
-
-      // Log the action
-      get().logAction(
-        `${currentPlayer.name} accepted ${acceptedProposal.name} for floor ${currentFloor}.`
-      );
-      logDebug(`Proposal accepted: player=${currentPlayer.id}, card=${acceptedProposal.id}, committedBy=${committedBy}, floor=${currentFloor}`, 'GameFlow');
-
-      // Finalize the floor
-      finalizeFloor(
-        currentFloor,
-        FloorStatus.Agreed,
-        acceptedProposal,  // Using our safe copy
-        committedBy
-      );
-
-      // Record end of negotiation time for telemetry
       if (get().negotiationStartTime) {
-        const endTime = Date.now();
-        const negotiationTime = Math.round((endTime - get().negotiationStartTime!) / 1000);
+        const negotiationTime = Math.round((Date.now() - get().negotiationStartTime!) / 1000);
         useTelemetryStore.getState().recordNegotiationTime(currentFloor, negotiationTime);
-        logDebug(`Negotiation completed in ${negotiationTime}s`, 'GameFlow');
+        logDebug(`Negotiation (ended by accept) completed in ${negotiationTime}s`, 'GameFlow');
       }
 
-      // Check for game end conditions
       const gameEndResult = get().evaluateGameEnd();
       if (gameEndResult.isOver) {
-        logDebug(`Game over: ${gameEndResult.reason}. Winner: ${gameEndResult.winner}`, 'GameFlow');
-        logDebug(`Game ending: reason=${gameEndResult.reason}, winner=${gameEndResult.winner}`, 'GameFlow');
-
-        // Using proper immer pattern
+        logDebug(`Game over after accept: ${gameEndResult.reason}. Winner: ${gameEndResult.winner}`, 'GameFlow');
         set(state => {
           state.gamePhase = GamePhase.GameOver;
-          state.gameOverReason = gameEndResult.reason || "Game over";
+          state.gameOverReason = gameEndResult.reason || 'Game over';
           state.winnerMessage = gameEndResult.winner === 'balanced'
             ? 'Project BALANCED'
             : `Project FAVORS ${gameEndResult.winner?.toUpperCase()}`;
         });
-
-        // Record the win in telemetry
         if (gameEndResult.winner) {
           useTelemetryStore.getState().recordWin(gameEndResult.winner);
         }
-
         return;
       }
 
-      // Advance to next floor
-      logDebug(`Advancing to next floor after acceptance`, 'GameFlow');
+      logDebug(`Advancing to next floor after accept`, 'GameFlow');
       get().advanceToNextFloor();
     },
 
     passProposal: () => {
-      // Always get fresh state
       const playersState = usePlayersStore.getState();
       const floorState = useFloorStore.getState();
-      
-      const {
-        getCurrentPlayer,
-        cardsBeingDealt
-      } = playersState;
+      const buildingState = useBuildingStore.getState();
 
-      const {
-        currentFloor,
-        getCurrentFloorState,
-        finalizeFloor
-      } = floorState;
+      const { getCurrentPlayer, cardsBeingDealt, isPlayerA } = playersState;
+      const { currentFloor, getCurrentFloorState, finalizeFloor } = floorState;
 
       logDebug(`passProposal called: currentFloor=${currentFloor}, isAiTurn=${get().isAiTurn}`, 'GameFlow');
 
-      // Validation - allow pass even from AI, but not during dealing
-      if (cardsBeingDealt) {
-        logDebug(`Pass proposal rejected: cards being dealt`, 'GameFlow');
+      if (get().gamePhase !== GamePhase.Playing || cardsBeingDealt) {
+        logDebug(`Pass proposal rejected: gamePhase=${get().gamePhase}, cardsBeingDealt=${cardsBeingDealt}`, 'GameFlow');
         return;
       }
 
@@ -568,117 +460,62 @@ export const useGameFlowStore = create<GameFlowStoreState>()(
         return;
       }
 
-      const floorStateObj = getCurrentFloorState();
-      if (!floorStateObj) {
-        logDebug(`Pass proposal rejected: no current floor state`, 'GameFlow');
+      const floorData = getCurrentFloorState();
+      if (!floorData) {
+        logDebug(`Pass proposal rejected: no current floor state for floor ${currentFloor}`, 'GameFlow');
         return;
       }
 
-      const hasProposalA = !!floorStateObj.proposalA;
-      const hasProposalB = !!floorStateObj.proposalB;
+      const proposalA = floorData.proposalA;
+      const proposalB = floorData.proposalB;
 
-      logDebug(`Pass state validation: player=${currentPlayer.id}, floor=${currentFloor}, hasProposalA=${hasProposalA}, hasProposalB=${hasProposalB}`, 'GameFlow');
+      if (proposalA && proposalB) {
+        get().logAction(`${currentPlayer.name} passes. AI mediator will select the fairest proposal.`);
+        logDebug(`Both proposals exist on floor ${currentFloor} - initiating mediation`, 'GameFlow');
 
-      // Handle different pass scenarios
-      if (hasProposalA && hasProposalB) {
-        // Mediation needed - Create safe copies of proposals
-        const proposalACopy = {...floorStateObj.proposalA!};
-        const proposalBCopy = {...floorStateObj.proposalB!};
-        
-        get().logAction(
-          `${currentPlayer.name} passes. AI mediator will select the fairest proposal.`
-        );
-        logDebug(`Both proposals exist - initiating mediation`, 'GameFlow');
+        const proposalACopy = { ...proposalA };
+        const proposalBCopy = { ...proposalB };
+        const currentScore = buildingState.building.baselineScore;
 
-        // Use copied proposals for mediation
-        const mediatedWinner = get().mediateProposals(currentFloor);
+        logDebug(`Mediating between A (${proposalACopy.name}, impact=${proposalACopy.netScoreImpact}) and B (${proposalBCopy.name}, impact=${proposalBCopy.netScoreImpact}) at score ${currentScore}`, 'GameFlow');
 
-        if (mediatedWinner) {
-          get().logAction(
-            `AI mediator selected ${mediatedWinner.name} for floor ${currentFloor}.`
-          );
-          // Log debug outcome handled inside mediateProposals
+        const scoreAfterA = currentScore + (proposalACopy.netScoreImpact || 0);
+        const scoreAfterB = currentScore + (proposalBCopy.netScoreImpact || 0);
+        const mediatedWinner = Math.abs(scoreAfterA) <= Math.abs(scoreAfterB) ? proposalACopy : proposalBCopy;
 
-          finalizeFloor(
-            currentFloor,
-            FloorStatus.Agreed,
-            mediatedWinner,  // Using mediated result 
-            Committer.Auto
-          );
-        } else {
-          // Fallback if mediation fails
-          get().logAction(`Mediation failed for floor ${currentFloor}. Skipping.`);
-          logDebug(`Mediation failed unexpectedly for floor ${currentFloor}`, 'GameFlow');
+        logDebug(`Mediation selected: ${mediatedWinner.name} (results in score of ${currentScore + (mediatedWinner.netScoreImpact || 0)})`, 'GameFlow');
+        get().logAction(`AI mediator selected ${mediatedWinner.name} for floor ${currentFloor}.`);
 
-          finalizeFloor(
-            currentFloor,
-            FloorStatus.Skipped,
-            undefined,
-            Committer.None
-          );
-        }
-      } else if (hasProposalA || hasProposalB) {
-        // Auto-accept single proposal - make a safe copy
-        const winnerCard = hasProposalA ? 
-          {...floorStateObj.proposalA!} : 
-          {...floorStateObj.proposalB!};
+        finalizeFloor(currentFloor, FloorStatus.Agreed, mediatedWinner, Committer.Auto);
 
-        if (winnerCard) {
-          get().logAction(`${currentPlayer.name} passes. Only one proposal exists.`);
-          get().logAction(
-            `${winnerCard.name} is automatically accepted for floor ${currentFloor}.`
-          );
-          logDebug(`One proposal exists, auto-accepting: ${winnerCard.id} (proposed by ${hasProposalA ? 'A' : 'B'})`, 'GameFlow');
+      } else if (proposalA || proposalB) {
+        const existingProposal = proposalA ?? proposalB;
+        const committer = proposalA ? Committer.PlayerA : Committer.PlayerB;
+        const existingProposalCopy = { ...existingProposal! };
 
-          finalizeFloor(
-            currentFloor,
-            FloorStatus.Agreed,
-            winnerCard,  // Using our safe copy
-            hasProposalA ? Committer.PlayerA : Committer.PlayerB
-          );
-        } else {
-          // Should be impossible if hasProposalA or hasProposalB is true
-          get().logAction(
-            `Error: Proposal expected but not found on floor ${currentFloor}. Skipping.`
-          );
-          logDebug(`Error in pass proposal state: proposal flagged (A=${hasProposalA}, B=${hasProposalB}) but object not found`, 'GameFlow');
+        get().logAction(`${currentPlayer.name} passes. Only one proposal exists.`);
+        get().logAction(`${existingProposalCopy.name} is automatically accepted for floor ${currentFloor}.`);
+        logDebug(`One proposal exists on floor ${currentFloor}, auto-accepting: ${existingProposalCopy.id} (committed by ${committer})`, 'GameFlow');
 
-          finalizeFloor(
-            currentFloor,
-            FloorStatus.Skipped,
-            undefined,
-            Committer.None
-          );
-        }
+        finalizeFloor(currentFloor, FloorStatus.Agreed, existingProposalCopy, committer);
+
       } else {
-        // No proposals - Skip the floor
         get().logAction(`${currentPlayer.name} passes. No proposals made.`);
         get().logAction(`Skipping floor ${currentFloor}.`);
-        logDebug(`No proposals exist, skipping floor ${currentFloor}`, 'GameFlow');
+        logDebug(`No proposals exist on floor ${currentFloor}, skipping floor`, 'GameFlow');
 
-        finalizeFloor(
-          currentFloor,
-          FloorStatus.Skipped,
-          undefined,
-          Committer.None
-        );
+        finalizeFloor(currentFloor, FloorStatus.Skipped, undefined, Committer.None);
       }
 
-      // Record end of negotiation time for telemetry
       if (get().negotiationStartTime) {
-        const endTime = Date.now();
-        const negotiationTime = Math.round((endTime - get().negotiationStartTime!) / 1000);
+        const negotiationTime = Math.round((Date.now() - get().negotiationStartTime!) / 1000);
         useTelemetryStore.getState().recordNegotiationTime(currentFloor, negotiationTime);
         logDebug(`Negotiation (ended by pass) completed in ${negotiationTime}s`, 'GameFlow');
       }
 
-      // Check for game end conditions
       const gameEndResult = get().evaluateGameEnd();
       if (gameEndResult.isOver) {
-        logDebug(`Game over: ${gameEndResult.reason}. Winner: ${gameEndResult.winner}`, 'GameFlow');
-        logDebug(`Game ending: reason=${gameEndResult.reason}, winner=${gameEndResult.winner}`, 'GameFlow');
-
-        // Using proper immer pattern
+        logDebug(`Game over after pass: ${gameEndResult.reason}. Winner: ${gameEndResult.winner}`, 'GameFlow');
         set(state => {
           state.gamePhase = GamePhase.GameOver;
           state.gameOverReason = gameEndResult.reason || "Game over";
@@ -686,109 +523,78 @@ export const useGameFlowStore = create<GameFlowStoreState>()(
             ? 'Project BALANCED'
             : `Project FAVORS ${gameEndResult.winner?.toUpperCase()}`;
         });
-
-        // Record the win in telemetry
         if (gameEndResult.winner) {
           useTelemetryStore.getState().recordWin(gameEndResult.winner);
         }
-
         return;
       }
 
-      // Advance to next floor
       logDebug(`Advancing to next floor after pass`, 'GameFlow');
       get().advanceToNextFloor();
     },
 
     useRecallToken: (floorNumber) => {
-      // Basic validations using helper functions
-      const validationResult = validateAll(
-        validateGamePhase(get().gamePhase, GamePhase.Playing),
-        validateNotDealing(usePlayersStore.getState().cardsBeingDealt),
-      );
+      logDebug(`useRecallToken invoked: floorNumber=${floorNumber}`, 'GameFlow');
 
-      // Additional validation for AI turn
-      if (get().isAiTurn) {
-        return validationFailed('AI cannot use recall tokens');
-      }
+      if (get().gamePhase !== GamePhase.Playing) return validationFailed('Game not active');
+      if (usePlayersStore.getState().cardsBeingDealt) return validationFailed('Dealing in progress');
+      if (get().isAiTurn) return validationFailed('AI cannot use recall tokens');
 
-      // Always get fresh state
       const playersState = usePlayersStore.getState();
       const floorState = useFloorStore.getState();
-      
-      const { getCurrentPlayer, decrementRecallToken, currentPlayerIndex } = playersState;
+      const buildingState = useBuildingStore.getState();
+
+      const { getCurrentPlayer, decrementRecallToken, setCurrentPlayerIndex, selectHandCard, selectCounterCard, getLeadPlayer, players } = playersState;
       const { validateRecall, applyRecall, setCurrentFloor } = floorState;
-      const { applyScorePenalty } = useBuildingStore.getState();
+      const { applyScorePenalty } = buildingState;
 
       const currentPlayer = getCurrentPlayer();
-      if (!currentPlayer) {
-        logDebug(`Recall token use rejected: no current player`, 'GameFlow');
-        return;
-      }
+      if (!currentPlayer) return validationFailed('No current player found');
 
-      // Validate the recall action
       const recallValidation = validateRecall(floorNumber);
       if (!recallValidation.isValid) {
         get().logAction(recallValidation.reason);
-        logDebug(`Recall token use rejected: validation failed (${recallValidation.reason})`, 'GameFlow');
-        return;
+        return validationFailed(`Recall validation failed: ${recallValidation.reason}`);
       }
 
-      // Store original state for rollback if needed
-      const originalPlayerIndex = currentPlayerIndex;
-      const originalTokenCount = currentPlayer.recallTokens;
-      let recallSuccessful = false;
-
       try {
-        // TRANSACTION START - First operation: Decrement the token
-        decrementRecallToken(originalPlayerIndex);
+        decrementRecallToken(playersState.currentPlayerIndex);
         logDebug(`Decremented recall token for player ${currentPlayer.id}`, 'GameFlow');
 
-        // Second operation: Apply the recall to the floor
-        const { winnerCard } = applyRecall(floorNumber);
-        logDebug(`Successfully applied recall to floor ${floorNumber}`, 'GameFlow');
+        const recalledInfo = applyRecall(floorNumber);
+        if (!recalledInfo || !recalledInfo.winnerCard) {
+          logDebug(`Recall applied, but no winner card info returned from floor ${floorNumber}. Assuming floor wasn't 'Agreed' or card missing.`, 'GameFlow');
+        } else {
+          logDebug(`Successfully applied recall to floor ${floorNumber}, recalled card: ${recalledInfo.winnerCard.id}`, 'GameFlow');
+        }
 
-        // Mark the transaction as successful
-        recallSuccessful = true;
-
-        // Apply score penalty based on player role (outside critical transaction)
         const scorePenalty = currentPlayer.role === PlayerRole.Community
           ? RECALL_SCORE_PENALTY
           : -RECALL_SCORE_PENALTY;
-
         applyScorePenalty(scorePenalty);
+        logDebug(`Applied score penalty: ${scorePenalty}`, 'GameFlow');
 
-        // Log the action
-        const currentScore = useBuildingStore.getState().building.baselineScore;
+        const newScore = useBuildingStore.getState().building.baselineScore;
         get().logAction(
           `${currentPlayer.name} used a recall token on floor ${floorNumber}. ` +
           `Score penalty: ${scorePenalty > 0 ? '+' : ''}${scorePenalty}. ` +
-          `New score: ${currentScore > 0 ? '+' : ''}${currentScore}`
+          `New score: ${newScore > 0 ? '+' : ''}${newScore}`
         );
+        logDebug(`Recall complete: player=${currentPlayer.id}, floor=${floorNumber}, penalty=${scorePenalty}, newScore=${newScore}`, 'GameFlow');
 
-        // Add detailed outcome logging
-        logDebug(`Recall token used: player=${currentPlayer.id}, floor=${floorNumber}, penalty=${scorePenalty}, newScore=${currentScore}`, 'GameFlow');
-
-        // Record recall in telemetry
         useTelemetryStore.getState().recordRecallUsed(currentPlayer.role);
 
-        // Prepare for renegotiation
         setCurrentFloor(floorNumber);
 
-        // Get fresh state again
-        const leadPlayer = usePlayersStore.getState().getLeadPlayer(floorNumber);
+        const leadPlayer = getLeadPlayer(floorNumber);
         if (!leadPlayer) {
           throw new Error(`Could not determine lead player for recalled floor ${floorNumber}`);
         }
 
-        // Set up next turn
-        const nextPlayerIndex = usePlayersStore.getState().players.findIndex(
-          p => p.id === leadPlayer.id
-        );
-
-        usePlayersStore.getState().setCurrentPlayerIndex(nextPlayerIndex);
-        usePlayersStore.getState().selectHandCard(null);
-        usePlayersStore.getState().selectCounterCard(null);
+        const nextPlayerIndex = players.findIndex(p => p.id === leadPlayer.id);
+        setCurrentPlayerIndex(nextPlayerIndex);
+        selectHandCard(null);
+        selectCounterCard(null);
 
         set(state => {
           state.isAiTurn = leadPlayer.type === PlayerType.AI;
@@ -797,10 +603,9 @@ export const useGameFlowStore = create<GameFlowStoreState>()(
         });
 
         get().logAction(`Returning to floor ${floorNumber}. ${leadPlayer.name} to propose.`);
-        logDebug(`Floor reopened: setting currentFloor=${floorNumber}, leadPlayer=${leadPlayer.id}, isAI=${leadPlayer.type === PlayerType.AI}`, 'GameFlow');
+        logDebug(`Floor reopened: currentFloor=${floorNumber}, leadPlayer=${leadPlayer.id}, isAI=${get().isAiTurn}`, 'GameFlow');
 
-        // Schedule AI turn if needed
-        if (leadPlayer.type === PlayerType.AI) {
+        if (get().isAiTurn) {
           setTimeout(() => {
             if (get().gamePhase === GamePhase.Playing && get().isAiTurn) {
               logDebug(`Triggering AI turn for reopened floor ${floorNumber}`, 'GameFlow');
@@ -808,116 +613,85 @@ export const useGameFlowStore = create<GameFlowStoreState>()(
             }
           }, AI_TURN_DELAY_MS);
         }
+
       } catch (error) {
-        // TRANSACTION ROLLBACK - if the recall failed but we already deducted the token
-        if (!recallSuccessful) {
-          logDebug(`Recall operation failed, rolling back token for player ${originalPlayerIndex}`, 'GameFlow');
-
-          // Add the token back - use setState directly to avoid Immer draft issue
-          usePlayersStore.setState(state => {
-            if (state.players[originalPlayerIndex]) {
-              state.players[originalPlayerIndex].recallTokens = originalTokenCount;
-            }
-            return state;
-          });
-
-          logDebug(`Rollback complete: restored token count to ${originalTokenCount}`, 'GameFlow');
-        }
-
-        // Log the error
         const errorMessage = error instanceof Error ? error.message : String(error);
-        logError(`Error recalling floor ${floorNumber}`, error instanceof Error ? error : new Error(errorMessage), 'GameFlow');
-        get().logAction(`Error recalling floor ${floorNumber}: ${errorMessage}`);
+        logError(`Error during recall for floor ${floorNumber}: ${errorMessage}`, error instanceof Error ? error : new Error(errorMessage), 'GameFlow');
+        get().logAction(`Error recalling floor ${floorNumber}. State might be inconsistent.`);
       }
     },
 
     advanceToNextFloor: () => {
-      // Always get fresh state
       const floorState = useFloorStore.getState();
       const { currentFloor, getNextPendingFloor, setCurrentFloor } = floorState;
+
       const nextFloor = getNextPendingFloor();
+      logDebug(`advanceToNextFloor called: currentFloor=${currentFloor}, determined nextFloor=${nextFloor}`, 'GameFlow');
 
-      // Add current state and target logging
-      logDebug(`advanceToNextFloor called: currentFloor=${currentFloor}, nextFloor=${nextFloor}`, 'GameFlow');
-
-      // Check if we've reached maximum height
       if (nextFloor > MAX_STORIES) {
         get().logAction(`Building complete! Maximum height of ${MAX_STORIES} stories reached.`);
+        logDebug(`Max height reached (${MAX_STORIES}), evaluating final game state.`, 'GameFlow');
 
         const gameEndResult = get().evaluateGameEnd();
-        // Add game end condition logging
-        logDebug(`Game ending due to max height: winner=${gameEndResult.winner}`, 'GameFlow');
+        logDebug(`Game ending due to max height: winner=${gameEndResult.winner}, reason=${gameEndResult.reason}`, 'GameFlow');
 
-        // Using proper immer pattern
         set(state => {
           state.gamePhase = GamePhase.GameOver;
-          state.gameOverReason = 'Building complete';
+          state.gameOverReason = gameEndResult.reason || 'Building complete';
           state.winnerMessage = gameEndResult.winner === 'balanced'
             ? 'Project BALANCED'
             : `Project FAVORS ${gameEndResult.winner?.toUpperCase()}`;
         });
 
-        // Record the win in telemetry
         if (gameEndResult.winner) {
           useTelemetryStore.getState().recordWin(gameEndResult.winner);
         }
-
         return;
       }
 
-      // Set the next floor
       setCurrentFloor(nextFloor);
 
-      // Get fresh player state
       const playersState = usePlayersStore.getState();
       const leadPlayer = playersState.getLeadPlayer(nextFloor);
-      
-      if (!leadPlayer) {
-        logDebug(`Error: Could not determine lead player for floor ${nextFloor}. Ending game.`, 'GameFlow');
-        console.error(`Error: Could not determine lead player for floor ${nextFloor}.`);
 
-        // Using proper immer pattern
+      if (!leadPlayer) {
+        logError(`Critical Error: Could not determine lead player for floor ${nextFloor}. Ending game.`, undefined, 'GameFlow');
         set(state => {
           state.gamePhase = GamePhase.GameOver;
           state.gameOverReason = 'Internal error: Cannot determine lead player';
+          state.winnerMessage = 'Error';
         });
         return;
       }
 
-      // Set up next turn
-      const nextPlayerIndex = playersState.players.findIndex(
-        p => p.id === leadPlayer.id
-      );
-
+      const nextPlayerIndex = playersState.players.findIndex(p => p.id === leadPlayer.id);
       playersState.setCurrentPlayerIndex(nextPlayerIndex);
+      playersState.selectHandCard(null);
+      playersState.selectCounterCard(null);
 
       set(state => {
         state.isAiTurn = leadPlayer.type === PlayerType.AI;
         state.negotiationStartTime = Date.now();
-        state.proposalTimer = PROPOSAL_TIMER; // Reset timer for new floor
+        state.proposalTimer = PROPOSAL_TIMER;
       });
 
       get().logAction(`Moving to floor ${nextFloor}. ${leadPlayer.name} to propose.`);
-      // Add player transition logging
-      logDebug(`Advanced to floor ${nextFloor}: leadPlayer=${leadPlayer.id}, isAI=${leadPlayer.type === PlayerType.AI}`, 'GameFlow');
+      logDebug(`Advanced to floor ${nextFloor}: leadPlayer=${leadPlayer.id}, isAI=${get().isAiTurn}`, 'GameFlow');
 
-      // Trigger AI turn if needed
-      if (leadPlayer.type === PlayerType.AI) {
+      if (get().isAiTurn) {
         logDebug(`AI turn required for new floor ${nextFloor}. Scheduling AI action...`, 'GameFlow');
         setTimeout(() => {
-          // Safety check
           if (get().gamePhase === GamePhase.Playing && get().isAiTurn) {
             logDebug(`Triggering AI turn for new floor ${nextFloor}`, 'GameFlow');
             useAIStore.getState().aiPlayTurn();
           }
-        }, 1000);
+        }, AI_TURN_DELAY_MS);
       }
     },
 
     mediateProposals: (floorNumber) => {
-      logDebug(`mediateProposals called for floor ${floorNumber}`, 'GameFlow');
-      
-      // Get fresh state
+      logDebug(`mediateProposals called for floor ${floorNumber} (Note: core logic moved to passProposal)`, 'GameFlow');
+
       const { getFloorState } = useFloorStore.getState();
       const { building } = useBuildingStore.getState();
 
@@ -927,160 +701,142 @@ export const useGameFlowStore = create<GameFlowStoreState>()(
         return undefined;
       }
 
-      // Create safe copies of proposals to avoid revoked proxy issues
-      const proposalA = {...floorState.proposalA};
-      const proposalB = {...floorState.proposalB};
+      const proposalA = { ...floorState.proposalA };
+      const proposalB = { ...floorState.proposalB };
       const currentScore = building.baselineScore;
 
-      // Add proposal comparison logging
-      logDebug(`Mediating between proposalA (${proposalA.name}, impact=${proposalA.netScoreImpact}) and proposalB (${proposalB.name}, impact=${proposalB.netScoreImpact}) at score ${currentScore}`, 'GameFlow');
+      logDebug(`Mediating between A (${proposalA.name}, impact=${proposalA.netScoreImpact}) and B (${proposalB.name}, impact=${proposalB.netScoreImpact}) at score ${currentScore}`, 'GameFlow');
 
-      // Implement mediation logic directly - choose card that brings score closest to balance
       const scoreAfterA = currentScore + (proposalA.netScoreImpact || 0);
       const scoreAfterB = currentScore + (proposalB.netScoreImpact || 0);
-      
-      // The winner is the card that brings the score closest to zero
       const winner = Math.abs(scoreAfterA) <= Math.abs(scoreAfterB) ? proposalA : proposalB;
 
-      // Add decision outcome
       logDebug(`Mediation selected: ${winner.name} (results in score of ${currentScore + (winner.netScoreImpact || 0)})`, 'GameFlow');
-
       return winner;
     },
 
-    // Added toggleAiTurn implementation
     toggleAiTurn: () => {
-      // Using proper Immer pattern
       set(state => {
         state.isAiTurn = !state.isAiTurn;
       });
 
-      // Call logAction after state update
       const isAi = get().isAiTurn;
       get().logAction(`Turn switched to ${isAi ? 'AI' : 'Human'}`);
       logDebug(`AI turn toggled: now ${isAi ? 'AI' : 'Human'}`, 'GameFlow');
     },
 
-    // Evaluation methods
-    evaluateGameEnd: () => {
-      // Get fresh state
-      const playersState = usePlayersStore.getState();
-      const buildingState = useBuildingStore.getState();
-      const floorState = useFloorStore.getState();
-      
-      const { players, deck } = playersState;
-      const { building } = buildingState;
-      const { currentFloor } = floorState;
-      const finalScore = building.baselineScore;
-
-      // Add current state logging
-      logDebug(`Evaluating game end conditions: currentScore=${finalScore}, currentFloor=${currentFloor}, deckSize=${deck.length}`, 'GameFlow');
-
-      // 1. Check max height
-      if (currentFloor >= MAX_STORIES && useFloorStore.getState().floors[MAX_STORIES-1]?.status !== FloorStatus.Pending) {
-        logDebug(`Game end condition: Max height reached (${MAX_STORIES}). Final score: ${finalScore}`, 'GameFlow');
-        const winner = get().determineWinner(finalScore);
-        logDebug(`Result: ${winner === 'balanced' ? "BALANCED (within threshold ±" + BALANCE_THRESHOLD + ")" : winner.toUpperCase() + " WINS"}`, 'GameFlow');
-        return { isOver: true, reason: 'Building complete', winner: winner };
+    canAccessDeckSelector: (): boolean => {
+      if (get().gamePhase !== GamePhase.Playing || get().isAiTurn) {
+        return false;
       }
 
-      // 2. Check empty deck and hands
+      if (usePlayersStore.getState().cardsBeingDealt) {
+        return false;
+      }
+
+      const humanPlayer = usePlayersStore.getState().getHumanPlayer();
+      if (!humanPlayer) {
+        return false;
+      }
+
+      if (humanPlayer.hand.length >= MAX_HAND_SIZE) {
+        return false;
+      }
+
+      if (usePlayersStore.getState().deck.length === 0) {
+        return false;
+      }
+
+      return true;
+    },
+
+    evaluateGameEnd: () => {
+      const { getCurrentNetScore } = useBuildingStore.getState();
+      const { currentFloor, floors } = useFloorStore.getState();
+      const { deck, players } = usePlayersStore.getState();
+
+      const finalScore = getCurrentNetScore();
+
+      logDebug(`Evaluating game end: score=${finalScore}, floor=${currentFloor}, deck=${deck.length}, p1Hand=${players[0]?.hand.length}, p2Hand=${players[1]?.hand.length}`, 'GameFlow');
+
+      const lastFloorFinalized = floors[MAX_STORIES - 1]?.status === FloorStatus.Agreed || floors[MAX_STORIES - 1]?.status === FloorStatus.Skipped;
+      if (currentFloor >= MAX_STORIES && lastFloorFinalized) {
+        logDebug(`Game end check: Max height (${MAX_STORIES}) reached and last floor finalized.`, 'GameFlow');
+        const winner = get().determineWinner(finalScore);
+        logDebug(`Result: ${winner}. Final score: ${finalScore}`, 'GameFlow');
+        return { isOver: true, reason: `Building complete (${MAX_STORIES} floors)`, winner: winner };
+      }
+
       const noMoreCards = deck.length === 0 && players.every(p => p.hand.length === 0);
       if (noMoreCards) {
         get().logAction(`No more cards left to play. Game over.`);
-        logDebug(`Game end condition: Deck and hands empty. Final score: ${finalScore}`, 'GameFlow');
+        logDebug(`Game end check: Deck and all hands empty.`, 'GameFlow');
         const winner = get().determineWinner(finalScore);
-        logDebug(`Result: ${winner === 'balanced' ? 'BALANCED (within threshold ±' + BALANCE_THRESHOLD + ')' : winner.toUpperCase() + ' WINS'}`, 'GameFlow');
-        return {
-          isOver: true,
-          reason: 'No more cards',
-          winner: winner
-        };
+        logDebug(`Result: ${winner}. Final score: ${finalScore}`, 'GameFlow');
+        return { isOver: true, reason: 'No cards left', winner: winner };
       }
 
-      // 3. Check for impossible finish
-      const remainingCards = [...deck, ...players.flatMap(player => player.hand)];
-      const cardMetrics = get().analyzeRemainingCards(remainingCards);
-      const bestPossibleFinalScore = building.baselineScore + cardMetrics.maxPositiveImpact;
-      const worstPossibleFinalScore = building.baselineScore + cardMetrics.maxNegativeImpact;
-      const isImpossible = (
-        worstPossibleFinalScore > BALANCE_THRESHOLD ||
-        bestPossibleFinalScore < -BALANCE_THRESHOLD
-      );
+      const isImpossible = get().checkImpossibleFinish();
       if (isImpossible) {
         get().logAction(`Impossible to reach balanced outcome. Ending game.`);
-        logDebug(`Game end condition: Balance impossible. Final score: ${finalScore}`, 'GameFlow');
+        logDebug(`Game end check: Balance impossible.`, 'GameFlow');
         const winner = get().determineWinner(finalScore);
-        logDebug(`Result: ${winner === 'balanced' ? "BALANCED (within threshold +/-" + BALANCE_THRESHOLD + ")" : winner.toUpperCase() + " WINS"}`, 'GameFlow');
-        return {
-          isOver: true,
-          reason: 'Balance impossible to achieve',
-          winner: winner
-        };
+        logDebug(`Result: ${winner}. Final score: ${finalScore}`, 'GameFlow');
+        return { isOver: true, reason: 'Balance impossible', winner: winner };
       }
 
-      // Game continues
-      logDebug(`Game end conditions not met, continuing game.`, 'GameFlow');
+      logDebug(`Game end conditions not met.`, 'GameFlow');
       return { isOver: false };
     },
 
-    /**
-     * Determines the winner based on the final score.
-     */
     determineWinner: (finalScore) => {
-      // Implement winner determination directly instead of using private engine method
       if (Math.abs(finalScore) <= BALANCE_THRESHOLD) {
+        logDebug(`determineWinner: Score ${finalScore} is within ±${BALANCE_THRESHOLD}. Result: balanced`, 'GameFlow');
         return 'balanced';
       } else if (finalScore > BALANCE_THRESHOLD) {
+        logDebug(`determineWinner: Score ${finalScore} is > ${BALANCE_THRESHOLD}. Result: community`, 'GameFlow');
         return 'community';
       } else {
+        logDebug(`determineWinner: Score ${finalScore} is < -${BALANCE_THRESHOLD}. Result: developer`, 'GameFlow');
         return 'developer';
       }
     },
 
-    /**
-     * Checks if it's impossible to achieve a balanced outcome
-     */
     checkImpossibleFinish: () => {
-      // Get fresh state
-      const buildingState = useBuildingStore.getState();
-      const floorState = useFloorStore.getState();
-      const playersState = usePlayersStore.getState();
+      const { getCurrentNetScore } = useBuildingStore.getState();
+      const { currentFloor } = useFloorStore.getState();
+      const { deck, players } = usePlayersStore.getState();
 
-      const { building } = buildingState;
-      const { currentFloor } = floorState;
+      const currentScore = getCurrentNetScore();
+      const floorsRemaining = MAX_STORIES - currentFloor + 1;
 
-      const currentScore = building.baselineScore;
-      const remainingFloors = MAX_STORIES - currentFloor + 1; // Include current floor if pending
+      if (floorsRemaining <= 0) {
+        logDebug(`checkImpossibleFinish: No floors remaining (${floorsRemaining}). Balance fixed.`, 'GameFlow');
+        return false;
+      }
 
-      // No need to check if the game already ended
-      if (remainingFloors <= 0) return false;
+      logDebug(`Checking impossible finish: score=${currentScore}, floorsRemaining=${floorsRemaining}`, 'GameFlow');
 
-      logDebug(`Checking if balanced finish is possible: currentScore=${currentScore}, remainingFloors=${remainingFloors}`, 'GameFlow');
+      const remainingCards = [...deck, ...players.flatMap(player => player.hand)];
+      if (remainingCards.length === 0 && floorsRemaining > 0) {
+        logDebug(`checkImpossibleFinish: No cards left but ${floorsRemaining} floors remain. Balance fixed.`, 'GameFlow');
+        return false;
+      }
 
-      // Get all remaining cards (in deck and player hands)
-      const remainingCards = [...playersState.deck, ...playersState.players.flatMap(player => player.hand)];
-
-      // Use the public method to analyze cards
       const cardMetrics = get().analyzeRemainingCards(remainingCards);
-
       logDebug(`Remaining card analysis: MaxPosImpact=${cardMetrics.maxPositiveImpact}, MaxNegImpact=${cardMetrics.maxNegativeImpact}`, 'GameFlow');
 
-      // Calculate best and worst possible outcomes
-      const bestPossibleFinalScore = currentScore + cardMetrics.maxPositiveImpact;
-      const worstPossibleFinalScore = currentScore + cardMetrics.maxNegativeImpact;
+      const bestPossibleScore = currentScore + cardMetrics.maxPositiveImpact;
+      const worstPossibleScore = currentScore + cardMetrics.maxNegativeImpact;
 
-      // Check if the entire possible range of final scores is outside the balance threshold
-      const isImpossible = (
-        worstPossibleFinalScore > BALANCE_THRESHOLD || // Too high, can't get down enough
-        bestPossibleFinalScore < -BALANCE_THRESHOLD    // Too low, can't get up enough
-      );
+      const isImpossible =
+        worstPossibleScore > BALANCE_THRESHOLD ||
+        bestPossibleScore < -BALANCE_THRESHOLD;
 
-      // Log outcome summary with clear explanation
       logDebug(
-        `Balance range [${worstPossibleFinalScore}, ${bestPossibleFinalScore}]. ` +
-        `Target range [${-BALANCE_THRESHOLD}, ${BALANCE_THRESHOLD}]. ` +
-        `Balance ${isImpossible ? 'IS' : 'IS NOT'} impossible to achieve.`,
+        `Potential score range [${worstPossibleScore}, ${bestPossibleScore}]. ` +
+        `Target balance [${-BALANCE_THRESHOLD}, ${BALANCE_THRESHOLD}]. ` +
+        `Impossible: ${isImpossible}`,
         'GameFlow'
       );
 
@@ -1088,41 +844,38 @@ export const useGameFlowStore = create<GameFlowStoreState>()(
     },
 
     analyzeRemainingCards: (cards) => {
-      // Implement the card analysis directly since gameEngine.analyzeRemainingCards is private
-      const maxPositiveImpact = cards.reduce((sum, card) => {
-        const impact = card.netScoreImpact || 0;
-        return impact > 0 ? sum + impact : sum;
-      }, 0);
-      
-      const maxNegativeImpact = cards.reduce((sum, card) => {
-        const impact = card.netScoreImpact || 0;
-        return impact < 0 ? sum + impact : sum;
-      }, 0);
-      
-      const topPositiveCards = [...cards]
-        .filter(card => (card.netScoreImpact || 0) > 0)
-        .sort((a, b) => (b.netScoreImpact || 0) - (a.netScoreImpact || 0))
-        .slice(0, 5);
-        
-      const topNegativeCards = [...cards]
-        .filter(card => (card.netScoreImpact || 0) < 0)
-        .sort((a, b) => (a.netScoreImpact || 0) - (b.netScoreImpact || 0))
-        .slice(0, 5);
-        
+      logDebug(`Analyzing ${cards.length} remaining cards`, 'GameFlow');
+
+      let maxPositiveImpact = 0;
+      let maxNegativeImpact = 0;
+      const positiveCards: CardData[] = [];
+      const negativeCards: CardData[] = [];
+
+      for (const card of cards) {
+        const impact = card.netScoreImpact ?? 0;
+        if (impact > 0) {
+          maxPositiveImpact += impact;
+          positiveCards.push(card);
+        } else if (impact < 0) {
+          maxNegativeImpact += impact;
+          negativeCards.push(card);
+        }
+      }
+
+      positiveCards.sort((a, b) => (b.netScoreImpact ?? 0) - (a.netScoreImpact ?? 0));
+      negativeCards.sort((a, b) => (a.netScoreImpact ?? 0) - (b.netScoreImpact ?? 0));
+
+      const topPositiveCards = positiveCards.slice(0, 5);
+      const topNegativeCards = negativeCards.slice(0, 5);
+
+      logDebug(`Analysis result: MaxPos=${maxPositiveImpact}, MaxNeg=${maxNegativeImpact}`, 'GameFlow');
+
       return {
         maxPositiveImpact,
         maxNegativeImpact,
         topPositiveCards,
-        topNegativeCards
+        topNegativeCards,
       };
     }
   }))
 );
-
-/**
- * Helper function for logging a game event message.
- */
-function logGameEvent(message: string): void {
-  // Use the centralized logDebug function with a specific category
-  logDebug(message, 'GameEvent');
-}

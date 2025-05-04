@@ -5,7 +5,8 @@ import { CardData } from "@/data/types";
 import { MANDATORY_IMPACTS, BUILDING_FOOTPRINT } from '@/data/constants'; // Assuming BUILDING_FOOTPRINT might be used later
 
 // Define BuildingUse interface locally since it's not exported from @/data/types
-interface BuildingUse {
+// EXPORT this interface
+export interface BuildingUse {
   cardId: string;
   cardName: string;
   category: string;
@@ -104,46 +105,53 @@ export const useBuildingStore = create<BuildingStoreState>()(
         logDebug(`Attempted to add card ${card.id} with zero or negative units (${units}). Skipping.`, "BuildingStore");
         return;
       }
-      logDebug(`Adding card ${card.id} (x${units}) to floor ${floorNumber}. Owner: ${ownerRole}`, "BuildingStore");
-
+      
+      // Snapshot values needed after mutation
+      const cardName = card.name;
+      const cardId = card.id;
+      
+      // Make a safe copy of the card
+      const cardCopy = { ...card };
+      
+      logDebug(`Adding card ${cardId} (x${units}) to floor ${floorNumber}. Owner: ${ownerRole}`, "BuildingStore");
+    
       set(state => {
         // Ensure floor exists in the map
         if (!state.building.floors[floorNumber]) {
           state.building.floors[floorNumber] = {
             sqftUsed: 0,
             uses: [],
-            // height: 0, // Removed height initialization
-            score: 0 // Score contribution *of this floor*
+            score: 0
           };
-          logDebug(`Initialized floor ${floorNumber} data.`, "BuildingStore");
         }
-
+    
         const floor = state.building.floors[floorNumber];
-        const totalSqftUsedByCard = (card.baseSqft ?? 0) * units;
-        const scoreImpactByCard = (card.netScoreImpact ?? 0) * units;
-
+        const totalSqftUsedByCard = (cardCopy.baseSqft ?? 0) * units;
+        const scoreImpactByCard = (cardCopy.netScoreImpact ?? 0) * units;
+    
         // Add the specific use of the card to the floor
         floor.uses.push({
-          cardId: card.id,
-          cardName: card.name,
-          category: card.category ?? '', // Provide default value if undefined
+          cardId: cardCopy.id,
+          cardName: cardCopy.name,
+          category: cardCopy.category ?? '',
           sqft: totalSqftUsedByCard,
           units: units,
           impact: scoreImpactByCard,
           owner: ownerRole
         });
-
-        // Update metrics *for this specific floor*
+    
+        // Update metrics
         floor.sqftUsed += totalSqftUsedByCard;
         floor.score += scoreImpactByCard;
-
-        // Removed height update logic here
-        // const cardHeight = getCardHeight(card.category);
-        // floor.height = Math.max(floor.height, cardHeight);
-
-        logDebug(`Floor ${floorNumber} updated: sqft=${floor.sqftUsed}, score=${floor.score}`, "BuildingStore");
       });
-       // Note: Building-wide totals (score, sqft, height) are calculated by getters.
+      
+      // After mutation, use the safe values we captured earlier
+      // or get fresh state if needed
+      const updatedFloor = useBuildingStore.getState().building.floors[floorNumber];
+      logDebug(
+        `Floor ${floorNumber} updated after adding ${cardName}: sqft=${updatedFloor?.sqftUsed}, score=${updatedFloor?.score}`, 
+        "BuildingStore"
+      );
     },
 
     removeCardFromFloor: (floorNumber, cardId) => {

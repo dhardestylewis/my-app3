@@ -91,15 +91,21 @@ export const useTelemetryStore = create<TelemetryStoreState>()(
     },
     
     recordGameEnd: (leadBlock) => {
+      // Capture what we need before mutations
+      const gameStartTime = get().gameStartTime;
+      const totalGames = get().telemetry.totalGamesPlayed;
+      const currentAvg = get().telemetry.averageGameLength;
+      
+      // Get a snapshot of current wins (before mutation)
+      const { community: communityWins, developer: developerWins } = 
+        { ...get().telemetry.winsByRole };
+      
       set(state => {
         // Calculate game length
-        if (state.gameStartTime) {
-          const gameLength = (Date.now() - state.gameStartTime) / 1000; // in seconds
+        if (gameStartTime) {
+          const gameLength = (Date.now() - gameStartTime) / 1000; // in seconds
           
           // Update average game length
-          const totalGames = state.telemetry.totalGamesPlayed;
-          const currentAvg = state.telemetry.averageGameLength;
-          
           state.telemetry.averageGameLength = 
             (currentAvg * totalGames + gameLength) / (totalGames + 1);
           
@@ -108,11 +114,10 @@ export const useTelemetryStore = create<TelemetryStoreState>()(
         
         // Record which player won in which lead block if provided
         if (leadBlock !== undefined) {
-          const { winsByRole } = state.telemetry;
           const winner = 
-            winsByRole.community > winsByRole.developer 
+            communityWins > developerWins 
               ? 'community' 
-              : winsByRole.developer > winsByRole.community 
+              : developerWins > communityWins 
                 ? 'developer' 
                 : 'balanced';
           

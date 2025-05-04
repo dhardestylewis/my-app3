@@ -1,41 +1,82 @@
+// First, update the imports in src/components/GameInterface.tsx
 'use client';
-
-// src/components/GameInterface.tsx
 
 import { useState } from 'react';
 import { useGameFlowStore, GamePhase } from '@/stores/useGameFlowStore';
 import { usePlayersStore, PlayerRole } from '@/stores/usePlayersStore';
-// No longer need telemetry or building store directly here unless displaying more specific info
-// import { useTelemetryStore } from '@/stores/useTelemetryStore';
-// import { useBuildingStore } from '@/stores/useBuildingStore';
+import { useUIPopupStore } from '@/stores/useUIPopupStore'; // NEW: Import the popup store
 import TowerVisualization from './TowerVisualization';
 import NegotiationPanel from './NegotiationPanel';
 import FloorTimeline from './FloorTimeline';
-import GameOverScreen from './GameOverScreen'; // Assume GameOver details are in a separate component
-import TitleScreen from './TitleScreen'; // Assume Title Screen details are in a separate component
+import GameOverScreen from './GameOverScreen';
+import TitleScreen from './TitleScreen';
+import DeckSelectorPopup from './DeckSelectorPopup'; // NEW: Import the popup component
 import { logDebug } from '@/utils/logger';
+import { MAX_HAND_SIZE } from '@/data/constants'; // NEW: Import for hand size check
+import { BookOpen } from 'lucide-react'; // NEW: Import icon for deck button
+
+// Then update the GameInterface component:
 
 const GameInterface = () => {
-    // Get necessary state from stores
+    // Get necessary state from stores - separated selectors for stability
     const gamePhase = useGameFlowStore(state => state.gamePhase);
-    // const gameLog = useGameFlowStore(state => state.gameLog); // Kept for potential log display
+    const isAiTurn = useGameFlowStore(state => state.isAiTurn);
+    
+    // Get the function reference first, then call it outside the selector
+    const canAccessDeckSelectorFn = useGameFlowStore(state => state.canAccessDeckSelector);
+    
+    // NEW: Get player info for deck button - separated selectors
+    const humanPlayer = usePlayersStore(state => state.getHumanPlayer());
+    const deckSize = usePlayersStore(state => state.deck.length);
+    const handSize = humanPlayer?.hand.length || 0;
+    
+    // NEW: Get popup state - using destructured assignment for separate variables
+    const isDeckSelectorOpen = useUIPopupStore(state => state.isDeckSelectorOpen);
+    const openDeckSelector = useUIPopupStore(state => state.openDeckSelector);
+    const closeDeckSelector = useUIPopupStore(state => state.closeDeckSelector);
+    
+    // Now call the function after selecting it to avoid re-computation in the selector
+    const canDrawFromDeck = canAccessDeckSelectorFn();
 
     // Render different screens based on game state
     const renderContent = () => {
         logDebug(`[GameInterface] Rendering phase: ${gamePhase}`, 'UI');
         switch (gamePhase) {
             case GamePhase.Title:
-                // TitleScreen component handles role selection and starting the game
                 return <TitleScreen />;
 
             case GamePhase.Playing:
                 return (
-                    // Main game layout (using CSS Grid for structure)
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 md:gap-6 h-[calc(100vh-2rem)] p-4 max-w-screen-2xl mx-auto">
                         {/* Left Column: Tower Visualization + Floor Timeline */}
                         <div className="lg:col-span-5 flex flex-col gap-4 md:gap-6 overflow-hidden">
-                            <div className="flex-grow bg-slate-800/50 rounded-lg border border-slate-700 overflow-hidden min-h-[300px]">
+                            <div className="flex-grow bg-slate-800/50 rounded-lg border border-slate-700 overflow-hidden min-h-[300px] relative">
                                 <TowerVisualization />
+                                
+                                {/* NEW: Add Draw from Deck button */}
+                                {gamePhase === GamePhase.Playing && (
+                                    <div className="absolute bottom-4 right-4">
+                                        <button
+                                            onClick={openDeckSelector}
+                                            disabled={!canDrawFromDeck}
+                                            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium shadow-md transition-all ${
+                                                canDrawFromDeck
+                                                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                                                    : 'bg-slate-700 text-slate-400 cursor-not-allowed opacity-70'
+                                            }`}
+                                            title={!canDrawFromDeck ? (
+                                                deckSize === 0 
+                                                    ? 'Deck is empty' 
+                                                    : handSize >= MAX_HAND_SIZE 
+                                                        ? 'Hand is full' 
+                                                        : "Not your turn"
+                                            ) : 'Draw cards from deck'}
+                                        >
+                                            <BookOpen size={16} />
+                                            <span>Draw ({deckSize})</span>
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                             <div className="bg-slate-800/50 rounded-lg border border-slate-700 p-3">
                                 <FloorTimeline />
@@ -45,25 +86,18 @@ const GameInterface = () => {
                         {/* Right Column: Negotiation Panel + Optional Log */}
                         <div className="lg:col-span-7 flex flex-col gap-4 md:gap-6 overflow-hidden">
                             <div className="flex-grow min-h-[400px]">
-                                {/* Negotiation Panel handles the core interaction */}
                                 <NegotiationPanel />
                             </div>
-
-                            {/* Optional: Display simple game log (can be removed/replaced) */}
-                            {/* <div className="bg-slate-800/50 rounded-lg border border-slate-700 p-4 max-h-60 overflow-y-auto text-sm">
-                                <h3 className="font-semibold text-slate-300 mb-2 sticky top-0 bg-slate-800/80 backdrop-blur-sm py-1">Game Log</h3>
-                                <div className="space-y-1">
-                                    {gameLog.slice(0, 15).map((log, index) => ( // Show limited log entries
-                                        <p key={`log-${index}`} className="py-1 border-b border-slate-700/50 last:border-b-0 text-slate-400">{log}</p>
-                                    ))}
-                                </div>
-                            </div> */}
                         </div>
+                        
+                        {/* NEW: Render the DeckSelectorPopup when open */}
+                        {isDeckSelectorOpen && (
+                            <DeckSelectorPopup onClose={closeDeckSelector} />
+                        )}
                     </div>
                 );
 
             case GamePhase.GameOver:
-                // GameOverScreen component handles displaying results and play again options
                 return <GameOverScreen />;
 
             default:
@@ -78,7 +112,7 @@ const GameInterface = () => {
 
     // Main container for the interface content
     return (
-        <div className="w-full h-screen overflow-hidden"> {/* Prevent body scroll */}
+        <div className="w-full h-screen overflow-hidden">
              {renderContent()}
         </div>
     );

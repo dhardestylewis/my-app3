@@ -1,6 +1,7 @@
 "use client";
 import { motion } from "framer-motion";
 import Image from 'next/image';
+import CardImage from "@/components/CardImage";
 import { cn } from "@/lib/utils";
 import { CardData } from "@/data/types";
 import * as LucideIcons from 'lucide-react';
@@ -25,6 +26,7 @@ interface CardProps {
   isPlayed?: boolean;
   onCardClick?: (id: string) => void;
   isDraggable?: boolean; // Control draggability
+  selectableOnly?: boolean; // NEW: When true, card is clickable but not draggable
 }
 
 export default function Card({ 
@@ -33,11 +35,14 @@ export default function Card({
   isPlayable = true, 
   isPlayed = false, 
   onCardClick,
-  isDraggable = true // Default to true
+  isDraggable = true, // Default to true
+  selectableOnly = false // NEW: Default to false
 }: CardProps) {
   // Only set up draggable if the card is playable, not played, and dragging is enabled
-  const shouldBeDraggable = isDraggable && isPlayable && !isPlayed;
-  
+  // Update the shouldBeDraggable logic:
+  // Only set up draggable if the card is playable, not played, dragging is enabled, and not in selectableOnly mode
+  const shouldBeDraggable = isDraggable && isPlayable && !isPlayed && !selectableOnly;
+
   // Set up draggable functionality from dnd-kit
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: card.id,
@@ -45,12 +50,13 @@ export default function Card({
   });
   
   // Handle click events only if the card is playable and not played
+  // Update the handleClick function to always call onCardClick when in selectableOnly mode:
   const handleClick = () => {
-    if (onCardClick && !isPlayed && isPlayable) {
+    if (onCardClick && ((!isPlayed && isPlayable) || selectableOnly)) {
       onCardClick(card.id);
     }
   };
-
+  
   // Determine visual cues based on state
   const ringColor = isSelected ? "ring-emerald-500" : isPlayed ? "ring-blue-900/30" : isPlayable ? "ring-white/20" : "ring-red-700/50";
   const opacity = !isPlayed && !isPlayable ? "opacity-60" : isDragging ? "opacity-80" : "opacity-100";
@@ -110,12 +116,12 @@ export default function Card({
 
              {/* Image Area */}
              <div className="relative w-full h-16 md:h-20 bg-slate-200 rounded overflow-hidden my-1 shadow-inner flex-shrink-0">
-                 <Image
-                    src={card.image || '/cards/placeholder.png'} 
-                    alt={card.name} 
-                    layout="fill" 
-                    objectFit="cover"
-                    onError={(e) => e.currentTarget.src = '/cards/placeholder.png'} />
+              <CardImage
+                src={card.image || '/cards/placeholder.png'}
+                alt={card.name}
+                objectFit="cover"
+                onError={(e) => (e.currentTarget.src = '/cards/placeholder.png')}
+              />
              </div>
 
              {/* Middle Row: Category + Cost/SF */}

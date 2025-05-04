@@ -1,0 +1,96 @@
+src/stores/loggerStore.ts:136:    useLoggerStore.getState().log(msg, LogLevel.DEBUG, cat),
+src/stores/loggerStore.ts:138:    useLoggerStore.getState().log(msg, LogLevel.INFO, cat),
+src/stores/loggerStore.ts:140:    useLoggerStore.getState().log(msg, LogLevel.WARNING, cat),
+src/stores/loggerStore.ts:143:    useLoggerStore.getState().log(m, LogLevel.ERROR, cat);
+src/stores/loggerStore.ts:147:    useLoggerStore.getState().log(msg, LogLevel.GAME, cat),
+src/stores/loggerStore.ts:154:    useLoggerStore.getState().logMany(entries);
+src/stores/loggerStore.ts:156:  flush: ()  => useLoggerStore.getState().flush(),
+src/stores/loggerStore.ts:157:  clear: ()  => useLoggerStore.getState().clear(),
+src/stores/loggerStore.ts:159:    const { flush, logs } = useLoggerStore.getState();
+src/stores/useAIStore.ts:268:      const { isAiTurn } = useGameFlowStore.getState();
+src/stores/useAIStore.ts:269:      const { getCurrentPlayer, getLeadPlayer } = usePlayersStore.getState();
+src/stores/useAIStore.ts:270:      const { currentFloor, getCurrentFloorState } = useFloorStore.getState();
+src/stores/useAIStore.ts:271:      const { logAction, passProposal } = useGameFlowStore.getState();
+src/stores/useAIStore.ts:361:      const aiPlayer = usePlayersStore.getState().getCurrentPlayer();
+src/stores/useAIStore.ts:362:      const selectHandCard = usePlayersStore.getState().selectHandCard;
+src/stores/useAIStore.ts:363:      const proposeCard = useGameFlowStore.getState().proposeCard;
+src/stores/useAIStore.ts:364:      const logAction = useGameFlowStore.getState().logAction;
+src/stores/useAIStore.ts:365:      const passProposal = useGameFlowStore.getState().passProposal;
+src/stores/useAIStore.ts:462:      const aiPlayer = usePlayersStore.getState().getCurrentPlayer();
+src/stores/useAIStore.ts:463:      const isPlayerA = usePlayersStore.getState().isPlayerA;
+src/stores/useAIStore.ts:464:      const selectCounterCard = usePlayersStore.getState().selectCounterCard;
+src/stores/useAIStore.ts:465:      const floorState = useFloorStore.getState().getCurrentFloorState();
+src/stores/useAIStore.ts:466:      const acceptProposal = useGameFlowStore.getState().acceptProposal;
+src/stores/useAIStore.ts:467:      const counterPropose = useGameFlowStore.getState().counterPropose;
+src/stores/useAIStore.ts:468:      const passProposal = useGameFlowStore.getState().passProposal;
+src/stores/useAIStore.ts:469:      const logAction = useGameFlowStore.getState().logAction;
+src/stores/useAIStore.ts:581:      logAction(`AI (${aiPlayer.name}) passes on floor ${useFloorStore.getState().currentFloor}.`);
+src/stores/useAIStore.ts:608:      const aiPlayer = usePlayersStore.getState().getCurrentPlayer();
+src/stores/useAIStore.ts:609:      const isPlayerA = usePlayersStore.getState().isPlayerA;
+src/stores/useAIStore.ts:610:      const floorState = useFloorStore.getState().getCurrentFloorState();
+src/stores/useAIStore.ts:611:      const acceptProposal = useGameFlowStore.getState().acceptProposal;
+src/stores/useAIStore.ts:612:      const passProposal = useGameFlowStore.getState().passProposal;
+src/stores/useAIStore.ts:613:      const logAction = useGameFlowStore.getState().logAction;
+src/stores/useAIStore.ts:712:      const floorState = useFloorStore.getState();
+src/stores/useAIStore.ts:713:      const playerState = usePlayersStore.getState();
+src/stores/useAIStore.ts:714:      const buildingState = useBuildingStore.getState();
+src/stores/useFloorStore.ts:227:        const { addCardToFloor } = useBuildingStore.getState();
+src/stores/useFloorStore.ts:233:            const { players } = usePlayersStore.getState();
+src/stores/useFloorStore.ts:258:      const { getCurrentPlayer } = usePlayersStore.getState();
+src/stores/useFloorStore.ts:328:        const { removeCardFromFloor } = useBuildingStore.getState();
+src/stores/useGameFlowStore.ts:86:      const { initializePlayers, getCurrentPlayer } = usePlayersStore.getState();
+src/stores/useGameFlowStore.ts:87:      const { initializeFloors } = useFloorStore.getState();
+src/stores/useGameFlowStore.ts:88:      const { resetBuilding } = useBuildingStore.getState();
+src/stores/useGameFlowStore.ts:89:      const { resetTelemetry } = useTelemetryStore.getState();
+src/stores/useGameFlowStore.ts:98:      const currentPlayer = usePlayersStore.getState().getCurrentPlayer();
+src/stores/useGameFlowStore.ts:105:        `Starting score: ${useBuildingStore.getState().building.baselineScore} (city climate requirements).`,
+src/stores/useGameFlowStore.ts:107:        `Each player has ${usePlayersStore.getState().players[0]?.recallTokens} recall tokens to reopen floors.`,
+src/stores/useGameFlowStore.ts:131:            useAIStore.getState().aiPlayTurn();
+src/stores/useGameFlowStore.ts:140:      const telemetryState = useTelemetryStore.getState() as { clear?: () => void };
+src/stores/useGameFlowStore.ts:177:      const playersState = usePlayersStore.getState();
+src/stores/useGameFlowStore.ts:200:      const playersState = usePlayersStore.getState();
+src/stores/useGameFlowStore.ts:201:      const floorState   = useFloorStore.getState();
+src/stores/useGameFlowStore.ts:273:      const responder = usePlayersStore.getState().getRespondingPlayer(currentFloor);
+src/stores/useGameFlowStore.ts:278:      const nextIdx = usePlayersStore.getState()
+src/stores/useGameFlowStore.ts:300:            useAIStore.getState().aiPlayTurn();
+src/stores/useGameFlowStore.ts:308:      const playersState = usePlayersStore.getState();
+src/stores/useGameFlowStore.ts:309:      const floorState = useFloorStore.getState();
+src/stores/useGameFlowStore.ts:365:      const leadPlayer = usePlayersStore.getState().getLeadPlayer(currentFloor);
+src/stores/useGameFlowStore.ts:371:      const nextPlayerIndex = usePlayersStore.getState().players.findIndex(
+src/stores/useGameFlowStore.ts:375:      usePlayersStore.getState().setCurrentPlayerIndex(nextPlayerIndex);
+src/stores/useGameFlowStore.ts:376:      usePlayersStore.getState().selectCounterCard(null); // Clear selection
+src/stores/useGameFlowStore.ts:394:            useAIStore.getState().aiPlayTurn();
+src/stores/useGameFlowStore.ts:402:      const playersState = usePlayersStore.getState();
+src/stores/useGameFlowStore.ts:403:      const floorState = useFloorStore.getState();
+src/stores/useGameFlowStore.ts:437:      const isLeadPlayer = currentPlayer.id === usePlayersStore.getState().getLeadPlayer(currentFloor)?.id;
+src/stores/useGameFlowStore.ts:486:        useTelemetryStore.getState().recordNegotiationTime(currentFloor, negotiationTime);
+src/stores/useGameFlowStore.ts:507:          useTelemetryStore.getState().recordWin(gameEndResult.winner);
+src/stores/useGameFlowStore.ts:520:      const playersState = usePlayersStore.getState();
+src/stores/useGameFlowStore.ts:521:      const floorState = useFloorStore.getState();
+src/stores/useGameFlowStore.ts:648:        useTelemetryStore.getState().recordNegotiationTime(currentFloor, negotiationTime);
+src/stores/useGameFlowStore.ts:669:          useTelemetryStore.getState().recordWin(gameEndResult.winner);
+src/stores/useGameFlowStore.ts:684:        validateNotDealing(usePlayersStore.getState().cardsBeingDealt),
+src/stores/useGameFlowStore.ts:693:      const playersState = usePlayersStore.getState();
+src/stores/useGameFlowStore.ts:694:      const floorState = useFloorStore.getState();
+src/stores/useGameFlowStore.ts:698:      const { applyScorePenalty } = useBuildingStore.getState();
+src/stores/useGameFlowStore.ts:739:        const currentScore = useBuildingStore.getState().building.baselineScore;
+src/stores/useGameFlowStore.ts:750:        useTelemetryStore.getState().recordRecallUsed(currentPlayer.role);
+src/stores/useGameFlowStore.ts:756:        const leadPlayer = usePlayersStore.getState().getLeadPlayer(floorNumber);
+src/stores/useGameFlowStore.ts:762:        const nextPlayerIndex = usePlayersStore.getState().players.findIndex(
+src/stores/useGameFlowStore.ts:766:        usePlayersStore.getState().setCurrentPlayerIndex(nextPlayerIndex);
+src/stores/useGameFlowStore.ts:767:        usePlayersStore.getState().selectHandCard(null);
+src/stores/useGameFlowStore.ts:768:        usePlayersStore.getState().selectCounterCard(null);
+src/stores/useGameFlowStore.ts:784:              useAIStore.getState().aiPlayTurn();
+src/stores/useGameFlowStore.ts:813:      const floorState = useFloorStore.getState();
+src/stores/useGameFlowStore.ts:839:          useTelemetryStore.getState().recordWin(gameEndResult.winner);
+src/stores/useGameFlowStore.ts:849:      const playersState = usePlayersStore.getState();
+src/stores/useGameFlowStore.ts:888:            useAIStore.getState().aiPlayTurn();
+src/stores/useGameFlowStore.ts:898:      const { getFloorState } = useFloorStore.getState();
+src/stores/useGameFlowStore.ts:899:      const { building } = useBuildingStore.getState();
+src/stores/useGameFlowStore.ts:944:      const playersState = usePlayersStore.getState();
+src/stores/useGameFlowStore.ts:945:      const buildingState = useBuildingStore.getState();
+src/stores/useGameFlowStore.ts:946:      const floorState = useFloorStore.getState();
+src/stores/useGameFlowStore.ts:957:      if (currentFloor >= MAX_STORIES && useFloorStore.getState().floors[MAX_STORIES-1]?.status !== FloorStatus.Pending) {
+src/stores/useGameFlowStore.ts:1023:      const buildingState = useBuildingStore.getState();
+src/stores/useGameFlowStore.ts:1024:      const floorState = useFloorStore.getState();
+src/stores/useGameFlowStore.ts:1025:      const playersState = usePlayersStore.getState();

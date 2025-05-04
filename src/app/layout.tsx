@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-// Load fonts
+/* ─────────────── Fonts ─────────────── */
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
@@ -13,13 +13,13 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-// SEO metadata (server-only API)
+/* ────────────── Metadata ───────────── */
 export const metadata: Metadata = {
   title: "Urban Development Game",
-  description:
-    "A strategic game about urban planning and community development",
+  description: "A strategic game about urban planning and community development",
 };
 
+/* ─────────────── Layout ────────────── */
 export default function RootLayout({
   children,
 }: {
@@ -27,6 +27,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
+      {/* Next.js will inject its own optimal preload tags here */}
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >

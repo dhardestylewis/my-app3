@@ -1,0 +1,57 @@
+{
+  "name": "my-app3",
+  "version": "0.1.0",
+  "private": true,
+
+  /* ───────────────────────────── Scripts ───────────────────────────── */
+  "scripts": {
+    "dev":   "next dev --turbopack",
+    "build": "next build",
+    "start": "next start",
+    "lint":  "next lint"
+  },
+
+  /* ─────────────────────── Runtime Dependencies ────────────────────── */
+  "dependencies": {
+    "@dnd-kit/core":                "^6.3.1",
+    "@dnd-kit/sortable":            "^10.0.0",
+    "@dnd-kit/utilities":           "^3.2.2",
+    "@radix-ui/react-slot":         "^1.2.0",
+    "@xstate/react":                "^5.0.3",
+    "class-variance-authority":     "^0.7.1",
+    "clsx":                         "^2.1.1",
+    "dayjs":                        "^1.11.13",        /* ← Moment replacement */
+    "framer-motion":                "^12.7.4",
+    "immer":                        "^10.1.1",
+    "lucide-react":                 "^0.501.0",
+    "next":                         "15.3.1",
+    "react":                        "^19.0.0",
+    "react-dom":                    "^19.0.0",
+    "tailwind-merge":               "^3.2.0",
+    "tw-animate-css":               "^1.2.7",
+    "xstate":                       "^5.19.2",
+    "zustand":                      "^5.0.3"
+  },
+
+  /* ──────────────────────── Dev Dependencies ───────────────────────── */
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.4",
+    "@types/node":          "^20",
+    "@types/react":         "^19",
+    "@types/react-dom":     "^19",
+    "autoprefixer":         "^10.4.21",
+    "postcss":              "^8.5.3",
+    "tailwindcss":          "^4.1.5",
+    "typescript":           "^5"
+  },
+
+  /* ────────────── Forced patches for transitive vulns ──────────────── */
+  "overrides": {
+    "lodash":          "^4.17.21",   /* fixes ReDoS + prototype‑pollution */
+    "lodash.set":      "^4.3.2",
+    "qs":              "^6.5.4",     /* fixes prototype‑pollution */
+    "ws":              "^8.17.0",    /* fixes header ReDoS */
+    "moment":          "^2.30.1",    /* only if something still requires it */
+    "path-to-regexp":  "^6.2.1"      /* plugs ReDoS from 0.1.x */
+  }
+}

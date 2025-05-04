@@ -1,64 +1,58 @@
 "use client";
 import { useState, useEffect, useMemo } from 'react';
-import { useBuildingStore } from '@/stores/useBuildingStore';
+// Import the store and necessary types/helpers
+import { useBuildingStore, BuildingUse } from '@/stores/useBuildingStore';
 import { Building, Users, Scale, Layers } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CardData } from '@/data/types';
+
+// Helper function to determine height based on card category (copied from store)
+const getCardHeight = (category: string | undefined): number => {
+  return category === 'Housing' ? 12 : 15;
+};
 
 const TowerVisualization = () => {
-  const [buildingData, setBuildingData] = useState<{
-    floorData: { floor: number; sqft: number; uses: CardData[]; score: number }[];
-    totalScore: number;
-  }>({
-    floorData: [],
-    totalScore: 0
-  });
+  // Select the raw building state object
+  const buildingState = useBuildingStore(state => state.building);
+
+  // Use useMemo to calculate derived state based on buildingState
+  const floorSummary = useMemo(() => {
+    // Logic copied and adapted from the store's getFloorSummary getter
+    return Object.entries(buildingState.floors)
+      .map(([floorNum, data]) => ({
+        floor: parseInt(floorNum),
+        sqft: data.sqftUsed || 0,
+        uses: data.uses || [],
+        score: data.score || 0,
+      }))
+      .sort((a, b) => a.floor - b.floor);
+  }, [buildingState.floors]); // Recalculate only when floors change
+
+  const totalScore = useMemo(() => {
+    // Logic copied and adapted from the store's getCurrentNetScore getter
+    let netScore = buildingState.baselineScore + buildingState.scorePenaltiesTotal;
+    for (const floorNumber in buildingState.floors) {
+      netScore += buildingState.floors[floorNumber]?.score || 0;
+    }
+    return netScore;
+  }, [buildingState.floors, buildingState.baselineScore, buildingState.scorePenaltiesTotal]); // Recalculate when relevant parts change
+
+  // baselineScore can be selected directly as it's a primitive
+  const baselineScore = useBuildingStore(state => state.building.baselineScore);
+
   const [compactView, setCompactView] = useState(false);
 
-  // Update building data when the game state changes
-  useEffect(() => {
-    const updateBuildingData = () => {
-      // Assuming getFloorSummary now returns the correct type { floor: number; sqft: number; uses: CardData[]; score: number }[]
-      const summary = getFloorSummary(); 
-      
-      // Define FloorData based on the expected structure, which uses CardData for 'uses'
-      interface FloorData {
-        floor: number;
-        sqft: number;
-        uses: CardData[]; // Use CardData here
-        score: number;
-      }
-
-      // No need for BuildingData interface here if only used once
-
-      setBuildingData({ 
-        floorData: summary, // No need for casting if getFloorSummary returns the correct type
-        totalScore: summary.reduce((total: number, floor: FloorData) => total + floor.score, 0) 
-      });
-    };
-
-    // Initial update
-    updateBuildingData();
-
-    // Set up interval for regular updates
-    const intervalId = setInterval(updateBuildingData, 1000);
-    
-    // Clean up on unmount
-    return () => clearInterval(intervalId);
-  }, [getFloorSummary]);
-  
   // Check if screen is small to automatically toggle compact view
   useEffect(() => {
     const checkWindowSize = () => {
       setCompactView(window.innerWidth < 768);
     };
-    
+
     // Initial check
     checkWindowSize();
-    
+
     // Set up listener for window resize
     window.addEventListener('resize', checkWindowSize);
-    
+
     // Clean up
     return () => window.removeEventListener('resize', checkWindowSize);
   }, []);
@@ -66,7 +60,7 @@ const TowerVisualization = () => {
   // Function to determine floor color based on score
   const getFloorStyles = useMemo(() => (score: number) => {
     let bgColor, textColor, borderColor, icon;
-    
+
     if (score > 0) {
       // Developer-favoring (positive score) - amber/gold
       const intensity = Math.min(Math.abs(score) / 20, 1);
@@ -88,7 +82,7 @@ const TowerVisualization = () => {
       textColor = "text-slate-400";
       icon = <Scale className="h-4 w-4 text-slate-400" />;
     }
-    
+
     return { bgColor, textColor, borderColor, icon };
   }, []);
 
@@ -96,6 +90,9 @@ const TowerVisualization = () => {
   const formatScore = (score: number) => {
     return score > 0 ? `+${score}` : score.toString();
   };
+
+  // Calculate the score displayed in the header (total score including baseline)
+  const displayScore = totalScore; // Use the memoized totalScore
 
   return (
     <div className="w-full h-full flex flex-col p-4">
@@ -109,23 +106,23 @@ const TowerVisualization = () => {
           <div className="text-center">
             <p className="text-xs text-slate-400">Balance Score</p>
             <p className={`text-lg font-bold ${
-              buildingData.totalScore > 0 
-                ? 'text-amber-400' 
-                : buildingData.totalScore < 0 
-                  ? 'text-emerald-400' 
+              displayScore > 0
+                ? 'text-amber-400'
+                : displayScore < 0
+                  ? 'text-emerald-400'
                   : 'text-slate-300'
             }`}>
-              {formatScore(buildingData.totalScore)}
+              {formatScore(displayScore)} {/* Use memoized displayScore */}
             </p>
           </div>
           <div className="text-center">
             <p className="text-xs text-slate-400">Floors</p>
             <p className="text-lg font-bold text-slate-300">
-              {buildingData.floorData.length}
+              {floorSummary.length} {/* Use memoized floorSummary */}
             </p>
           </div>
           {/* Toggle for compact view */}
-          <button 
+          <button
             className="text-xs text-slate-400 border border-slate-700 rounded px-2 py-1 hover:bg-slate-700"
             onClick={() => setCompactView(!compactView)}
             title={compactView ? "Show full view" : "Show compact view"}
@@ -134,9 +131,9 @@ const TowerVisualization = () => {
           </button>
         </div>
       </div>
-      
+
       {/* Empty state message */}
-      {buildingData.floorData.length === 0 && (
+      {floorSummary.length === 0 && (
         <div className="flex-grow flex items-center justify-center">
           <div className="text-center text-slate-500 italic p-8 bg-slate-800/40 rounded-lg border border-slate-700">
             <Layers className="h-12 w-12 mx-auto mb-3 text-slate-600" />
@@ -145,19 +142,19 @@ const TowerVisualization = () => {
           </div>
         </div>
       )}
-      
+
       {/* Tower Visualization */}
       <div className="flex-grow relative flex flex-col justify-end overflow-y-auto scrollbar-thin scrollbar-thumb-slate-600 scrollbar-track-transparent pb-2 pr-2">
         {/* Ground Level */}
         <div className="h-2 w-full bg-slate-700 mb-2 rounded-sm"></div>
-        
+
         {/* Floors from bottom to top */}
         <AnimatePresence>
-          {buildingData.floorData.map((floor) => {
+          {floorSummary.map((floor) => { // Use memoized floorSummary
             const { bgColor, textColor, borderColor, icon } = getFloorStyles(floor.score);
-            
+
             return (
-              <motion.div 
+              <motion.div
                 key={`floor-${floor.floor}`}
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
@@ -167,7 +164,7 @@ const TowerVisualization = () => {
                 style={{ backgroundColor: bgColor }}
               >
                 {compactView ? (
-                  // Compact view for small screens
+                  // Compact view
                   <div className="py-2 px-3 flex items-center justify-between">
                     <div className="flex items-center">
                       <div className="flex-shrink-0 w-8 h-8 bg-slate-800 rounded-full flex items-center justify-center mr-2 border border-slate-600">
@@ -179,7 +176,7 @@ const TowerVisualization = () => {
                         </span>
                       </div>
                     </div>
-                    
+
                     <div className="flex items-center gap-2">
                       {icon}
                       <span className={`font-bold ${textColor}`}>
@@ -194,27 +191,27 @@ const TowerVisualization = () => {
                     <div className="flex-shrink-0 w-10 h-10 bg-slate-800 rounded-full flex items-center justify-center mr-3 border border-slate-600">
                       <span className="font-semibold">{floor.floor}</span>
                     </div>
-                    
+
                     {/* Floor Info */}
                     <div className="flex-grow min-w-0">
                       <div className="flex items-center">
                         {icon}
                         <span className={`ml-1 font-semibold ${textColor} truncate`}>
-                          Floor {floor.floor} 
+                          Floor {floor.floor}
                           <span className="text-slate-500 ml-2 text-xs">
                             ({Math.round(floor.sqft).toLocaleString()} sq.ft.)
                           </span>
                         </span>
                       </div>
-                      
+
                       {/* Uses */}
                       <div className="mt-1 flex flex-wrap gap-1 text-xs">
-                        {floor.uses.map((use, idx) => (
-                          <span 
+                        {floor.uses.map((use, idx) => ( // Use 'uses' from memoized floorSummary item
+                          <span
                             key={`use-${floor.floor}-${idx}`}
                             className={`px-1.5 py-0.5 rounded truncate max-w-[150px] ${
-                              use.owner === 'developer' 
-                                ? 'bg-amber-950/50 text-amber-400 border border-amber-800/50' 
+                              use.owner === 'developer'
+                                ? 'bg-amber-950/50 text-amber-400 border border-amber-800/50'
                                 : 'bg-emerald-950/50 text-emerald-400 border border-emerald-800/50'
                             }`}
                             title={`${(use.units || 0) > 1 ? `${use.units}× ` : ''}${use.cardName}`}
@@ -224,7 +221,7 @@ const TowerVisualization = () => {
                         ))}
                       </div>
                     </div>
-                    
+
                     {/* Score */}
                     <div className="flex-shrink-0 ml-2">
                       <span className={`font-bold ${textColor}`}>
@@ -238,7 +235,7 @@ const TowerVisualization = () => {
           })}
         </AnimatePresence>
       </div>
-      
+
       {/* Legend */}
       <div className="mt-3 bg-slate-800/70 p-2 rounded-md border border-slate-700 flex justify-around text-xs">
         <div className="flex items-center">
@@ -259,52 +256,4 @@ const TowerVisualization = () => {
 };
 
 export default TowerVisualization;
-
-// Define the expected structure of a floor within the store state
-interface FloorState {
-  sqftUsed: number;
-  uses: CardData[]; // Assuming 'uses' in the store holds CardData objects
-  [key: string]: any; // Allow for other properties if necessary
-}
-
-// Define the return type for getFloorSummary
-interface FloorSummary {
-  floor: number;
-  sqft: number;
-  uses: CardData[];
-  score: number;
-}
-
-function getFloorSummary(): FloorSummary[] {
-  // Retrieve the building state from the store.
-  // Use the defined FloorState interface for better type safety.
-  const { floors } = useBuildingStore.getState() as unknown as { floors: FloorState[] };
-
-  if (!floors || !Array.isArray(floors) || floors.length === 0) return [];
-
-  return floors.map((floor, index) => {
-    // Calculate the total score for the floor by summing up the impact of each use.
-    // Ensure 'use' has an 'impact' property, default to 0 if not present or invalid.
-    const score = floor.uses.reduce((total, use) => total + (use.impact ?? 0), 0);
-
-    return {
-      floor: index + 1,          // Floor number (starting from 1)
-      sqft: floor.sqftUsed,      // Total area used on the floor
-      uses: floor.uses,          // List of uses on this floor
-      score,                     // Aggregate score for this floor
-    };
-  });
-}
-
-function setBuildingData({
-  floorData,
-  totalScore,
-}: {
-  floorData: { floor: number; sqft: number; uses: CardData[]; score: number }[];
-  totalScore: number;
-}) {
-  // In this example, we simply log the new data.
-  // In a real app you might update a global store or trigger additional side effects.
-  console.log("New building data:", { floorData, totalScore });
-}
 

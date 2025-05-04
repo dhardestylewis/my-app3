@@ -3,11 +3,12 @@ import { immer } from 'zustand/middleware/immer';
 
 /**
  * -------------------------------------------------------------
- *  Logger Store — Zustand + Immer
+ *  Logger Store — Zustand + Immer (with "print‑once" console output)
  * -------------------------------------------------------------
  *  • Batched writes (requestAnimationFrame)
- *  • Pluggable max-entry cap & debug flag
- *  • Console mirroring (opt-in via debug)
+ *  • Per‑message deduping so identical logs hit the console only once
+ *  • Pluggable max‑entry cap & debug flag
+ *  • Console mirroring (opt‑in via debug)
  *  • Convenience wrapper (logger.xxx)
  * -------------------------------------------------------------
  */
@@ -22,7 +23,7 @@ export enum LogLevel {
 }
 
 export interface LogEntry {
-  timestamp: number;          // ← now a number (ms since epoch)
+  timestamp: number;          // ms since epoch
   message:   string;
   level:     LogLevel;
   category?: string;
@@ -44,10 +45,10 @@ interface LoggerState {
 
 interface LoggerActions {
   log:      (message: string, level?: LogLevel, category?: string) => void;
-  logMany:  (entries: Omit<LogEntry, 'timestamp'>[])           => void;
-  flush:    ()                                              => void;
-  clear:    ()                                              => void;
-  setDebug: (enabled: boolean)                              => void;
+  logMany:  (entries: Omit<LogEntry, 'timestamp'>[])               => void;
+  flush:    ()                                                    => void;
+  clear:    ()                                                    => void;
+  setDebug: (enabled: boolean)                                    => void;
 }
 
 export type LoggerStore = LoggerState & LoggerActions;
@@ -55,19 +56,19 @@ export type LoggerStore = LoggerState & LoggerActions;
 // ────────────────────────────────────────────────────────── Factory ──
 export const useLoggerStore = create<LoggerStore>()(
   immer((set, get) => ({
-    // State
-    logs:            [],
-    pending:         [],
-    batchScheduled:  false,
-    debug:           DEFAULT_DEBUG,
+    // State --------------------------------------------------------
+    logs:           [],
+    pending:        [],
+    batchScheduled: false,
+    debug:          DEFAULT_DEBUG,
 
-    // Actions
+    // Actions ------------------------------------------------------
     log: (message, level = LogLevel.INFO, category) => {
       const entry: LogEntry = {
-        timestamp: Date.now(),   // ← use numeric timestamp
+        timestamp: Date.now(),
         message,
         level,
-        category
+        category,
       };
       set(s => { s.pending.push(entry); });
 
@@ -81,7 +82,7 @@ export const useLoggerStore = create<LoggerStore>()(
 
     logMany: (entries) => {
       const ts = Date.now();
-      const batch = entries.map(e => ({ timestamp: ts, ...e }));
+      const batch: LogEntry[] = entries.map(e => ({ timestamp: ts, ...e }));
       set(s => {
         s.logs = [...batch, ...s.logs].slice(0, MAX_ENTRIES);
       });
@@ -96,15 +97,13 @@ export const useLoggerStore = create<LoggerStore>()(
       }
 
       set(s => {
-        s.logs            = [...pending, ...s.logs].slice(0, MAX_ENTRIES);
-        s.pending         = [];
-        s.batchScheduled  = false;
+        s.logs           = [...pending, ...s.logs].slice(0, MAX_ENTRIES);
+        s.pending        = [];
+        s.batchScheduled = false;
       });
 
       if (get().debug) {
-        console.debug(
-          `[logger] flushed ${pending.length} entr${pending.length === 1 ? 'y' : 'ies'}`
-        );
+        console.debug(`[logger] flushed ${pending.length} entr${pending.length === 1 ? 'y' : 'ies'}`);
       }
     },
 
@@ -119,16 +118,27 @@ export const useLoggerStore = create<LoggerStore>()(
 );
 
 // ─────────────────────────────────────────────────────── Helpers ──
+/** Keeps track of every (level|category|message) triple that has already been printed. */
+const onceCache = new Set<string>();
+
 function printToConsole(entry: LogEntry): void {
+  // Deterministic key — cheap string concat, good enough even for thousands of msgs.
+  const cacheKey = `${entry.level}|${entry.category ?? ''}|${entry.message}`;
+  if (onceCache.has(cacheKey)) return; // Already seen — swallow.
+  onceCache.add(cacheKey);
+
   const prefix = `[${entry.category ?? 'Log'}]`;
   switch (entry.level) {
-    case LogLevel.DEBUG:   console.debug(prefix, entry.message); break;
-    case LogLevel.INFO:    console.info(prefix, entry.message);  break;
-    case LogLevel.WARNING: console.warn(prefix, entry.message);  break;
+    case LogLevel.DEBUG:   console.debug (prefix, entry.message); break;
+    case LogLevel.INFO:    console.info  (prefix, entry.message); break;
+    case LogLevel.WARNING: console.warn  (prefix, entry.message); break;
     case LogLevel.ERROR:   console.error(prefix, entry.message); break;
-    case LogLevel.GAME:    console.log(prefix, entry.message);   break;
+    case LogLevel.GAME:    console.log   (prefix, entry.message); break;
   }
 }
+
+/** For unit tests / HMR: clear the dedupe cache so the next identical message will print again. */
+export const _resetLoggerOnceCacheForTests = (): void => onceCache.clear();
 
 // ──────────────────────────────────────────────── Public Facade ──
 export const logger = {
@@ -149,13 +159,13 @@ export const logger = {
     const entries = msgs.map(message => ({
       level:    LogLevel.GAME,
       message,
-      category: cat
+      category: cat,
     }));
     useLoggerStore.getState().logMany(entries);
   },
   flush: ()  => useLoggerStore.getState().flush(),
   clear: ()  => useLoggerStore.getState().clear(),
-  formatted: (level?: LogLevel) => {
+  formatted: (level?: LogLevel): string[] => {
     const { flush, logs } = useLoggerStore.getState();
     flush();
     return logs
