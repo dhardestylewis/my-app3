@@ -1,122 +1,133 @@
 // stores/useBuildingStore.ts
+// Fully unabridged and corrected version.
+
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
-import { CardData } from "@/data/types";
-import { MANDATORY_IMPACTS, BUILDING_FOOTPRINT } from '@/data/constants'; // Assuming BUILDING_FOOTPRINT might be used later
+import { CardData } from "@/data/types"; 
+import { MANDATORY_IMPACTS, BUILDING_FOOTPRINT } from '@/data/constants'; // BUILDING_FOOTPRINT included as per original
+import { logDebug, logError, logWarn } from '@/utils/logger';
 
-// Define BuildingUse interface locally since it's not exported from @/data/types
-// EXPORT this interface
 export interface BuildingUse {
-  cardId: string;
+  cardId: string; // Should be unique for this use, e.g., cardInstanceId
   cardName: string;
   category: string;
-  sqft: number;
+  sqft: number; 
   units: number;
-  impact: number;
+  impact: number; // Score impact
   owner: string;
 }
 
-// Define FloorData interface locally - removed 'height'
 interface FloorData {
-  sqftUsed: number;
+  sqftUsed: number; 
   uses: BuildingUse[];
-  // height: number; // Removed height from floor-specific data
-  score: number;
+  score: number; // Sum of score impacts of cards on this floor
 }
-import { logDebug, logError } from '@/utils/logger'; // Assuming logger exists
 
-// Calculate baseline score from mandatory impacts (unchanged)
 const BASELINE_SCORE = MANDATORY_IMPACTS.reduce(
   (sum, impact) => sum + impact.netScoreImpact,
   0
 );
 
-// Interface for the core building state slice
 interface BuildingState {
-  floors: { [floorNumber: number]: FloorData }; // Map of floor number to its data
-  baselineScore: number; // Initial score offset (e.g., from site conditions)
-  scorePenaltiesTotal: number; // Tracks penalties applied (e.g., from recall tokens)
+  floors: { [floorNumber: number]: FloorData };
+  baselineScore: number;
+  scorePenaltiesTotal: number;
+  currentTotalSqFt: number; 
 }
 
-// Define the initial state structure
 const initialBuildingState: BuildingState = {
   floors: {},
   baselineScore: BASELINE_SCORE,
   scorePenaltiesTotal: 0,
+  currentTotalSqFt: 0, 
 };
 
-// Interface for the full Zustand store (state + actions + getters)
-interface BuildingStoreState {
-  // State
+export interface BuildingStoreState {
   building: BuildingState;
 
-  // Actions
   resetBuilding: () => void;
-  /** Adds a card's use to a specific floor */
   addCardToFloor: (
     floorNumber: number,
     card: CardData,
-    units: number, // How many instances of the card use (e.g., apartments)
-    ownerRole: string // e.g., 'community' or 'developer'
+    units: number, 
+    ownerRole: string
   ) => void;
-  /** Removes a card's use from a specific floor */
-  removeCardFromFloor: (floorNumber: number, cardId: string) => void;
-  /** Applies an explicit score penalty/bonus (e.g., for using recall) */
+  removeCardFromFloor: (floorNumber: number, useCardIdToRemove: string) => void; // ID of the use entry
   applyScorePenalty: (penalty: number) => void;
 
-  // Getters (Functions to calculate derived state)
   getCurrentNetScore: () => number;
-  getTotalSqft: () => number;
+  getTotalSqft: () => number; 
   getTotalHeight: () => number;
-  /** Provides a summary list of floor data */
   getFloorSummary: () => {
     floor: number,
     sqft: number,
     uses: BuildingUse[],
     score: number
-    // Removed height from summary item
   }[];
   getFloorData: (floorNumber: number) => FloorData | undefined;
 }
 
-// Helper function to determine height based on card category (example logic)
+// Helper to determine height contribution of a card category
 const getCardHeight = (category: string | undefined): number => {
-  return category === 'Housing' ? 12 : 15;
+  // This is a simplified model; can be expanded based on card types
+  return category === 'Housing' ? 12 : 15; // Example heights
 };
-
 
 export const useBuildingStore = create<BuildingStoreState>()(
   immer((set, get) => ({
-    // State
     building: { ...initialBuildingState },
 
-    // --- Actions ---
     resetBuilding: () => {
       logDebug("Resetting building store state.", "BuildingStore");
-      set({ building: { ...initialBuildingState } });
+      // Ensure all relevant parts of the building state are reset
+      set({ 
+        building: { 
+          ...initialBuildingState, 
+          floors: {}, // Explicitly clear floors
+          currentTotalSqFt: 0 // Ensure total sqft is reset
+        } 
+      });
     },
 
     addCardToFloor: (floorNumber, card, units = 1, ownerRole) => {
       if (!card || !card.id) {
-        logError(`Attempted to add invalid card data to floor ${floorNumber}.`, "BuildingStore");
+        logError(`Attempted to add invalid card data to floor ${floorNumber}. Card or card.id is missing.`, "BuildingStore");
         return;
       }
       if (units <= 0) {
         logDebug(`Attempted to add card ${card.id} with zero or negative units (${units}). Skipping.`, "BuildingStore");
         return;
       }
-      
-      // Snapshot values needed after mutation
+
+      let cardSqftValue: number | undefined = undefined;
+
+      // Try to get square footage, preferring baseSqft, then minimumSqft.
+      if (card) { // Ensure card object exists
+        if (typeof card.baseSqft === 'number') {
+          cardSqftValue = card.baseSqft;
+        } else if (typeof card.minimumSqft === 'number') {
+          // Log a warning that we're falling back, this suggests an upstream data consistency opportunity.
+          logWarn(`Card ${card.name} (ID: ${card.id}) is using 'minimumSqft' (${card.minimumSqft}) because 'baseSqft' is not defined. 'baseSqft' should ideally be populated during CardInstance creation from the definition's 'minimumSqft'.`, "BuildingStore");
+          cardSqftValue = card.minimumSqft;
+        }
+        // Optionally, add more fallbacks here if other sqft-related fields like 'minSqft' might be used.
+        // else if (typeof card.minSqft === 'number') {
+        //   cardSqftValue = card.minSqft;
+        // }
+      }
+
+      // Check if a valid square footage value was found
+      if (typeof cardSqftValue !== 'number') {
+        logError(`Card ${card.name} (ID: ${card.id}) is missing a valid square footage property (checked 'baseSqft' and 'minimumSqft'). Cannot add to floor.`, "BuildingStore");
+        return;
+      }
+
       const cardName = card.name;
-      const cardId = card.id;
-      
-      // Make a safe copy of the card
-      const cardCopy = { ...card };
-      
-      logDebug(`Adding card ${cardId} (x${units}) to floor ${floorNumber}. Owner: ${ownerRole}`, "BuildingStore");
-    
+      const useEntryId = card.instanceId || card.id;
+
+      logDebug(`Adding card ${cardName} (Use ID: ${useEntryId}, Base ID: ${card.id}, Units: ${units}, SqFt/Unit: ${cardSqftValue}) to floor ${floorNumber}. Owner: ${ownerRole}`, "BuildingStore");
+
       set(state => {
-        // Ensure floor exists in the map
         if (!state.building.floors[floorNumber]) {
           state.building.floors[floorNumber] = {
             sqftUsed: 0,
@@ -124,80 +135,68 @@ export const useBuildingStore = create<BuildingStoreState>()(
             score: 0
           };
         }
-    
+
         const floor = state.building.floors[floorNumber];
-        const totalSqftUsedByCard = (cardCopy.baseSqft ?? 0) * units;
-        const scoreImpactByCard = (cardCopy.netScoreImpact ?? 0) * units;
-    
-        // Add the specific use of the card to the floor
+        // Use the resolved cardSqftValue for calculations
+        const totalSqftUsedByThisAddition = cardSqftValue * units;
+        const scoreImpactByThisAddition = (card.netScoreImpact ?? 0) * units;
+
         floor.uses.push({
-          cardId: cardCopy.id,
-          cardName: cardCopy.name,
-          category: cardCopy.category ?? '',
-          sqft: totalSqftUsedByCard,
+          cardId: useEntryId,
+          cardName: card.name,
+          category: card.category ?? '',
+          sqft: totalSqftUsedByThisAddition,
           units: units,
-          impact: scoreImpactByCard,
+          impact: scoreImpactByThisAddition,
           owner: ownerRole
         });
-    
-        // Update metrics
-        floor.sqftUsed += totalSqftUsedByCard;
-        floor.score += scoreImpactByCard;
+
+        floor.sqftUsed += totalSqftUsedByThisAddition;
+        floor.score += scoreImpactByThisAddition;
+        state.building.currentTotalSqFt += totalSqftUsedByThisAddition;
       });
-      
-      // After mutation, use the safe values we captured earlier
-      // or get fresh state if needed
-      const updatedFloor = useBuildingStore.getState().building.floors[floorNumber];
+
+      const updatedFloor = get().building.floors[floorNumber];
+      const currentTotalSqFt = get().building.currentTotalSqFt;
       logDebug(
-        `Floor ${floorNumber} updated after adding ${cardName}: sqft=${updatedFloor?.sqftUsed}, score=${updatedFloor?.score}`, 
+        `Floor ${floorNumber} updated after adding ${cardName}: sqftUsedOnFloor=${updatedFloor?.sqftUsed}, floorScore=${updatedFloor?.score}. Building total sqft: ${currentTotalSqFt}`,
         "BuildingStore"
       );
     },
-
-    removeCardFromFloor: (floorNumber, cardId) => {
-      logDebug(`Attempting to remove card ${cardId} from floor ${floorNumber}.`, "BuildingStore");
-
+    
+    removeCardFromFloor: (floorNumber, useCardIdToRemove: string) => {
+      logDebug(`Attempting to remove card use entry '${useCardIdToRemove}' from floor ${floorNumber}.`, "BuildingStore");
       set(state => {
         const floor = state.building.floors[floorNumber];
         if (!floor) {
-          logDebug(`Cannot remove card: Floor ${floorNumber} does not exist.`, "BuildingStore");
+          logWarn(`Cannot remove card use: Floor ${floorNumber} does not exist.`, "BuildingStore");
           return;
         }
 
-        const cardUseIndex = floor.uses.findIndex(use => use.cardId === cardId);
-        if (cardUseIndex === -1) {
-           logDebug(`Cannot remove card: Card ${cardId} not found on floor ${floorNumber}.`, "BuildingStore");
+        const useIndexToRemove = floor.uses.findIndex(use => use.cardId === useCardIdToRemove);
+        if (useIndexToRemove === -1) {
+           logWarn(`Cannot remove card use: Entry '${useCardIdToRemove}' not found on floor ${floorNumber}.`, "BuildingStore");
           return;
         }
 
-        const removedUse = floor.uses[cardUseIndex];
-
-        // Update floor metrics by subtracting the removed use's contribution
+        const removedUse = floor.uses[useIndexToRemove];
         floor.sqftUsed -= removedUse.sqft;
         floor.score -= removedUse.impact;
+        state.building.currentTotalSqFt -= removedUse.sqft;
 
-        // Remove the use from the array
-        floor.uses.splice(cardUseIndex, 1);
-
-        // Removed height recalculation logic here
-        // if (floor.uses.length > 0) {
-        //     floor.height = Math.max(
-        //         ...floor.uses.map(use => getCardHeight(use.category)),
-        //         0
-        //     );
-        // } else {
-        //     floor.height = 0;
-        //     logDebug(`Floor ${floorNumber} is now empty after removing ${cardId}.`, "BuildingStore");
-        // }
-
-        if (floor.uses.length === 0) {
-          logDebug(`Floor ${floorNumber} is now empty after removing ${cardId}.`, "BuildingStore");
-          // Optionally delete the floor if empty: delete state.building.floors[floorNumber];
+        if (state.building.currentTotalSqFt < 0) {
+            logWarn(`Building total sqft became negative (${state.building.currentTotalSqFt}) after removal from floor ${floorNumber}. Setting to 0.`, "BuildingStore");
+            state.building.currentTotalSqFt = 0;
         }
 
-         logDebug(`Removed card ${cardId} from floor ${floorNumber}. New stats: sqft=${floor.sqftUsed}, score=${floor.score}`, "BuildingStore");
+        floor.uses.splice(useIndexToRemove, 1);
+
+        if (floor.uses.length === 0 && floor.sqftUsed === 0 && floor.score === 0) {
+          logDebug(`Floor ${floorNumber} is now empty after removing card use '${useCardIdToRemove}'.`, "BuildingStore");
+          // Optionally: delete state.building.floors[floorNumber]; if completely empty floors are not desired.
+        }
+        logDebug(`Removed card use '${useCardIdToRemove}' from floor ${floorNumber}. Floor sqftUsed=${floor.sqftUsed}, score=${floor.score}. Building total sqft: ${state.building.currentTotalSqFt}`, "BuildingStore");
       });
-       // Note: Building-wide totals are calculated by getters.
     },
 
     applyScorePenalty: (penalty) => {
@@ -207,70 +206,71 @@ export const useBuildingStore = create<BuildingStoreState>()(
       });
     },
 
-    // --- Getters ---
-
     getCurrentNetScore: () => {
       const { building } = get();
-      // Start with baseline and explicit penalties
       let netScore = building.baselineScore + building.scorePenaltiesTotal;
-      // Add score contributions from each floor
-      for (const floorNumber in building.floors) {
-        netScore += building.floors[floorNumber]?.score || 0;
-      }
-      // logDebug(`Calculated currentNetScore: ${netScore}`, "BuildingStore"); // Can be noisy
+      // Iterate over floor values for their scores
+      Object.values(building.floors).forEach(floorData => {
+        if (floorData) { // Ensure floorData is not undefined
+            netScore += floorData.score;
+        }
+      });
       return netScore;
     },
 
     getTotalSqft: () => {
-      const { building } = get();
-      let totalSqft = 0;
-      for (const floorNumber in building.floors) {
-        totalSqft += building.floors[floorNumber]?.sqftUsed || 0;
-      }
-      // logDebug(`Calculated totalSqft: ${totalSqft}`, "BuildingStore"); // Can be noisy
-      return totalSqft;
+      // Returns the explicitly tracked total square footage for the building
+      return get().building.currentTotalSqFt;
     },
 
     getTotalHeight: () => {
       const { building } = get();
       let totalHeight = 0;
-
-      // Iterate through each floor defined in the state
-      for (const floorNumber in building.floors) {
-        const floorData = building.floors[floorNumber];
+      // Iterate over floor values to calculate height
+      Object.values(building.floors).forEach(floorData => {
         if (floorData && floorData.uses.length > 0) {
-          // Find the maximum height among all uses on this specific floor
-          const floorHeight = Math.max(
-            ...floorData.uses.map(use => getCardHeight(use.category)),
-            0 // Ensure a minimum of 0 if uses array is somehow empty after check
-          );
-          // Add this floor's height contribution to the total building height
-          totalHeight += floorHeight;
+          // Calculate height for this floor based on its uses.
+          // This assumes the height of a floor is determined by the max height of cards on it.
+          // Or, a floor could have a fixed height if it has any uses.
+          const floorUsesHeights = floorData.uses.map(use => getCardHeight(use.category));
+          const maxCardHeightOnFloor = Math.max(...floorUsesHeights, 0); // Ensure at least 0
+          
+          // If a floor is used, it contributes its height.
+          // If multiple cards are on a floor, this model assumes they don't stack vertically
+          // to increase that single floor's structural height beyond what one card dictates.
+          // The height added is the height of *that floor level*.
+          if (maxCardHeightOnFloor > 0) { // Only add height if there are cards contributing to it.
+             // This logic might be simplified if each "occupied" floor number adds a fixed height,
+             // regardless of card category. For now, it's category-driven.
+             // If each distinct floor number only contributes once to height:
+             // This sum will work if each floorData represents a unique floor level.
+            totalHeight += maxCardHeightOnFloor; 
+          }
         }
-      }
-
-      // logDebug(`Calculated totalHeight: ${totalHeight}`, "BuildingStore"); // Can be noisy
+      });
       return totalHeight;
     },
 
     getFloorSummary: () => {
       const { building } = get();
-      const floorData = Object.entries(building.floors)
-        .map(([floorNum, data]) => ({
-          floor: parseInt(floorNum),
-          sqft: data.sqftUsed || 0,
-          uses: data.uses || [],
-          score: data.score || 0, // Score contribution of this floor
-          // height: data.height || 0 // Removed height from summary
-        }))
+      // Transform the floors object into a sorted array for summary
+      return Object.entries(building.floors)
+        .map(([floorNumStr, data]) => {
+          const floorNum = parseInt(floorNumStr, 10);
+          // Ensure data exists and has defaults if somehow partially formed (should not happen with init)
+          return {
+            floor: floorNum,
+            sqft: data?.sqftUsed || 0,
+            uses: data?.uses || [],
+            score: data?.score || 0,
+          };
+        })
         .sort((a, b) => a.floor - b.floor); // Sort by floor number
-
-      return floorData;
     },
 
-    getFloorData: (floorNumber) => {
-       const { building } = get();
-       return building.floors[floorNumber];
+    getFloorData: (floorNumber: number): FloorData | undefined => {
+        // Returns a direct reference; immer handles immutability within 'set' calls.
+        return get().building.floors[floorNumber];
     }
   }))
 );

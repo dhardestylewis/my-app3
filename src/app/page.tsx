@@ -1,6 +1,6 @@
 // src/app/page.tsx
 import { getValidatedImagePath } from "@/lib/server/imageValidation";
-import { deckCards } from "@/data/deckData";
+import { cards as deckCards } from "@/data/deckData";
 // import the server component that does the checks
 import GamePage from "./game/page";
 // import the client boundary
@@ -14,9 +14,13 @@ export const metadata = {
 
 export default async function Page() {
   // run the same server-side image validation
-  await Promise.all(deckCards.map((card) =>
-    getValidatedImagePath(card.image)
-  ));
+  interface DeckCard {
+    image: string;
+  }
+
+  await Promise.all(
+    deckCards.map(card => getValidatedImagePath(card.image ?? ''))
+  );    
 
   // render inside the existing client layout
   return (

@@ -1,73 +1,59 @@
+// src/components/game/InitialDealAnimator.tsx
+// Corrected: Removed direct call to dealCardToPlayer.
+// Animation is now primarily a visual overlay during the store's dealing process.
+
 'use client';
 
-// src/components/game/InitialDealAnimator.tsx
-
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useState } from 'react'; // Removed useRef as direct deal triggering is gone
+import { motion, AnimatePresence } from 'framer-motion';
 import { usePlayersStore } from '@/stores/usePlayersStore';
 import { logDebug } from '@/utils/logger';
+// import CardBack from '../ui/CardBack'; // Keep if you want to animate card backs
 
-const STARTING_HAND_SIZE = 5;
+// const STARTING_HAND_SIZE = 5; // No longer needed here for deal count
 
 const DealingOverlay = () => (
-  <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-    <div className="text-white text-xl font-semibold animate-pulse">Dealing Cards...</div>
+  <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[100]"> {/* Increased z-index */}
+    <motion.div
+      initial={{ scale: 0.8, opacity: 0, y: 20 }}
+      animate={{ scale: 1, opacity: 1, y: 0 }}
+      exit={{ scale: 0.8, opacity: 0, y: 20 }}
+      transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+      className="text-white text-xl font-semibold bg-slate-700/60 p-4 px-6 rounded-lg shadow-xl backdrop-blur-sm"
+    >
+      Dealing Cards...
+    </motion.div>
   </div>
 );
 
 export function InitialDealAnimator() {
+  // cardsBeingDealt is true while usePlayersStore.dealInitialCards() is running (including its internal delays)
   const cardsBeingDealt = usePlayersStore(s => s.cardsBeingDealt);
-  const playersLength  = usePlayersStore(s => s.players.length);
-
-  // Keep latest primitives in refs for async access
-  const dealingFlagRef   = useRef(cardsBeingDealt);
-  const playersLenRef    = useRef(playersLength);
-  useEffect(() => { dealingFlagRef.current = cardsBeingDealt; }, [cardsBeingDealt]);
-  useEffect(() => { playersLenRef.current  = playersLength;  }, [playersLength]);
-
-  const timeoutRef  = useRef<NodeJS.Timeout | null>(null);
-  const runningRef  = useRef(false);
+  const [showOverlay, setShowOverlay] = useState(false);
 
   useEffect(() => {
-    const clear = () => {
-      runningRef.current = false;
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-        timeoutRef.current = null;
-      }
-    };
-
-    if (cardsBeingDealt && playersLength > 0 && !runningRef.current) {
-      logDebug('[InitialDealAnimator] begin', 'Animation');
-      runningRef.current = true;
-
-      let dealtTotal   = 0;
-      const totalToDeal = STARTING_HAND_SIZE * playersLenRef.current;
-      let playerIndex  = 0;
-
-      const tick = () => {
-        if (!dealingFlagRef.current) { clear(); return; }
-        if (dealtTotal >= totalToDeal) {
-          usePlayersStore.getState().completeInitialDeal();
-          clear();
-          return;
-        }
-
-        // Perform the deal without holding onto snapshot objects
-        usePlayersStore.getState().dealCardToPlayer(playerIndex);
-        logDebug(`[InitialDealAnimator] dealt to player ${playerIndex}`, 'Animation');
-
-        dealtTotal++;
-        playerIndex = (playerIndex + 1) % playersLenRef.current;
-        timeoutRef.current = setTimeout(tick, 150);
-      };
-
-      tick();
-    } else if (!cardsBeingDealt && runningRef.current) {
-      clear();
+    if (cardsBeingDealt) {
+      logDebug('[InitialDealAnimator] cardsBeingDealt is true. Showing overlay.', 'Animation');
+      setShowOverlay(true);
+    } else {
+      // When cardsBeingDealt becomes false, the store's dealInitialCards has completed.
+      // We can hide the overlay after a short delay to let animations finish if any were added.
+      logDebug('[InitialDealAnimator] cardsBeingDealt is false. Hiding overlay.', 'Animation');
+      // Optionally add a small delay here before setShowOverlay(false) if needed for visual effect
+      setShowOverlay(false); 
     }
+  }, [cardsBeingDealt]);
 
-    return clear;
-  }, [cardsBeingDealt, playersLength]);
+  // The actual dealing logic (adding cards to hand with delays) is now fully encapsulated
+  // within usePlayersStore.dealInitialCards(). This component just shows an overlay.
+  // If card-by-card visual animation is desired (e.g., cards flying to hand areas),
+  // this component would need to be much more complex, possibly by observing
+  // player hand changes and animating based on diffs, or `dealInitialCards` would need
+  // to emit events for each card dealt.
 
-  return cardsBeingDealt ? <DealingOverlay /> : null;
+  return (
+    <AnimatePresence>
+      {showOverlay && <DealingOverlay />}
+    </AnimatePresence>
+  );
 }

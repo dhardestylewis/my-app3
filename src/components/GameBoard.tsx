@@ -2,11 +2,12 @@
 
 // src/components/GameBoard.tsx
 import React, { useEffect } from 'react';
-import { useGameFlowStore, GamePhase } from '@/stores/useGameFlowStore';
-import { usePlayersStore, PlayerType } from '@/stores/usePlayersStore';
+import { useGameFlowStore } from '@/stores/useGameFlowStore';
+import { usePlayersStore } from '@/stores/usePlayersStore';
 import { useAIStore } from '@/stores/useAIStore';
 import { logDebug } from '@/utils/logger';
 import { AI_TURN_DELAY_MS, PROPOSAL_TIMER_MS } from '@/data/constants';
+import { GamePhase, PlayerType } from "@/data/types"
 
 /**
  * Proper AI turn management with React useEffect

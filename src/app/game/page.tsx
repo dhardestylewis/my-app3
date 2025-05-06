@@ -1,11 +1,18 @@
 // src/app/game/page.tsx
 import { getValidatedImagePath } from "@/lib/server/imageValidation";
-import { deckCards } from "@/data/deckData";
+import { cards as deckCards } from "@/data/deckData";
 
 export default async function GamePage() {
   // server-side preflight image checks (keep this)
+  interface DeckCard {
+    image: string;
+  }
+
   await Promise.all(
-    deckCards.map((card) => getValidatedImagePath(card.image))
+    deckCards.map(card =>
+      // image may be undefined in raw definitions – give fallback empty string
+      getValidatedImagePath(card.image ?? '')
+    )
   );
 
   return (

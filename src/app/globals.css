@@ -1,5 +1,4 @@
-/* stylelint-disable at-rule-no-unknown */
-/* file: src/app/globals.css */
+/* src/app/globals.css */
 
 /* 1) External imports must come first */
 @import "tw-animate-css"; /* Keep this if you use it */
@@ -9,52 +8,36 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Any other custom CSS imports or definitions */
-
-/* --- New Theme Variables --- */
+/* --- Theme Variables (as provided previously) --- */
 @layer base {
   :root {
-    /* Updated Radius */
-    --radius: 0.5rem; /* 8px - Slightly smaller radius for a sharper look */
-
-    /* --- NEW Light Mode Colors --- */
-    --background: oklch(0.98 0.01 240);    /* Very light cool grey */
-    --foreground: oklch(0.15 0.03 240);    /* Dark desaturated blue */
-
-    --card: oklch(1 0 0);                  /* Pure white */
-    --card-foreground: oklch(0.15 0.03 240); /* Dark desaturated blue */
-
-    --popover: oklch(1 0 0);               /* Pure white */
-    --popover-foreground: oklch(0.15 0.03 240); /* Dark desaturated blue */
-
-    --primary: oklch(0.6 0.25 285);        /* Vibrant Magenta/Purple */
-    --primary-foreground: oklch(0.98 0.01 285); /* Very light contrast */
-
-    --secondary: oklch(0.85 0.05 220);     /* Light muted cyan/blue */
-    --secondary-foreground: oklch(0.2 0.1 220); /* Darker cyan/blue */
-
-    --muted: oklch(0.94 0.02 240);         /* Lighter cool grey */
-    --muted-foreground: oklch(0.45 0.03 240); /* Medium desaturated blue */
-
-    --accent: oklch(0.9 0.04 285);         /* Lighter/Softer Magenta/Purple */
-    --accent-foreground: oklch(0.3 0.15 285); /* Darker accent color */
-
-    --destructive: oklch(0.6 0.22 25);       /* Strong Red */
-    --destructive-foreground: oklch(0.98 0.01 25); /* Light contrast for red */
-
-    --border: oklch(0.9 0.02 240);         /* Light grey border */
-    --input: oklch(0.88 0.02 240);        /* Slightly darker input background */
-    --ring: oklch(0.6 0.25 285 / 0.6);    /* Primary color for focus ring, slightly transparent */
-
-    /* --- NEW Chart Colors (Light) --- */
-    --chart-1: oklch(0.7 0.2 50);         /* Orange */
-    --chart-2: oklch(0.65 0.18 130);      /* Green */
-    --chart-3: oklch(0.6 0.25 285);       /* Primary Magenta */
-    --chart-4: oklch(0.7 0.15 220);       /* Cyan */
-    --chart-5: oklch(0.75 0.1 330);       /* Pink */
-
-    /* --- NEW Sidebar (Light) --- */
-    --sidebar: oklch(0.96 0.015 240);     /* Slightly off-white */
+    --radius: 0.5rem;
+    /* Light Mode Colors */
+    --background: oklch(0.98 0.01 240);
+    --foreground: oklch(0.15 0.03 240);
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.15 0.03 240);
+    --popover: oklch(1 0 0);
+    --popover-foreground: oklch(0.15 0.03 240);
+    --primary: oklch(0.6 0.25 285);
+    --primary-foreground: oklch(0.98 0.01 285);
+    --secondary: oklch(0.85 0.05 220);
+    --secondary-foreground: oklch(0.2 0.1 220);
+    --muted: oklch(0.94 0.02 240);
+    --muted-foreground: oklch(0.45 0.03 240);
+    --accent: oklch(0.9 0.04 285);
+    --accent-foreground: oklch(0.3 0.15 285);
+    --destructive: oklch(0.6 0.22 25);
+    --destructive-foreground: oklch(0.98 0.01 25);
+    --border: oklch(0.9 0.02 240);
+    --input: oklch(0.88 0.02 240);
+    --ring: oklch(0.6 0.25 285 / 0.6);
+    --chart-1: oklch(0.7 0.2 50);
+    --chart-2: oklch(0.65 0.18 130);
+    --chart-3: oklch(0.6 0.25 285);
+    --chart-4: oklch(0.7 0.15 220);
+    --chart-5: oklch(0.75 0.1 330);
+    --sidebar: oklch(0.96 0.015 240);
     --sidebar-foreground: oklch(0.15 0.03 240);
     --sidebar-primary: oklch(0.6 0.25 285);
     --sidebar-primary-foreground: oklch(0.98 0.01 285);
@@ -65,44 +48,32 @@
   }
 
   .dark {
-    /* --- NEW Dark Mode Colors --- */
-    --background: oklch(0.12 0.03 265);    /* Deep dark desaturated indigo */
-    --foreground: oklch(0.95 0.01 265);    /* Light cool grey */
-
-    --card: oklch(0.18 0.04 265);          /* Slightly lighter dark indigo */
-    --card-foreground: oklch(0.95 0.01 265); /* Light cool grey */
-
-    --popover: oklch(0.22 0.05 265);       /* Even lighter indigo for popovers */
-    --popover-foreground: oklch(0.95 0.01 265); /* Light cool grey */
-
-    --primary: oklch(0.7 0.2 285);         /* Vibrant Magenta/Purple (lighter for dark mode) */
-    --primary-foreground: oklch(0.1 0.05 285); /* Dark contrast */
-
-    --secondary: oklch(0.3 0.08 220);      /* Muted deep cyan/blue */
-    --secondary-foreground: oklch(0.9 0.03 220); /* Light contrast for secondary */
-
-    --muted: oklch(0.25 0.05 265);         /* Darker greyish indigo */
-    --muted-foreground: oklch(0.6 0.02 265); /* Medium cool grey */
-
-    --accent: oklch(0.35 0.1 285);         /* Darker/Muted Magenta/Purple */
-    --accent-foreground: oklch(0.95 0.02 285); /* Lighter accent foreground */
-
-    --destructive: oklch(0.65 0.2 25);      /* Vibrant Red (slightly lighter for dark) */
-    --destructive-foreground: oklch(0.1 0.05 25); /* Dark contrast for red */
-
-    --border: oklch(0.25 0.05 265);        /* Subtle border, slightly lighter than card */
-    --input: oklch(0.28 0.05 265);         /* Slightly lighter input background */
-    --ring: oklch(0.7 0.2 285 / 0.7);     /* Primary color for focus ring */
-
-    /* --- NEW Chart Colors (Dark) --- */
-    --chart-1: oklch(0.75 0.2 50);         /* Orange (lighter) */
-    --chart-2: oklch(0.7 0.18 130);        /* Green (lighter) */
-    --chart-3: oklch(0.7 0.2 285);         /* Primary Magenta (lighter) */
-    --chart-4: oklch(0.75 0.15 220);       /* Cyan (lighter) */
-    --chart-5: oklch(0.8 0.1 330);         /* Pink (lighter) */
-
-    /* --- NEW Sidebar (Dark) --- */
-    --sidebar: oklch(0.18 0.04 265);       /* Same as card background */
+    /* Dark Mode Colors */
+    --background: oklch(0.12 0.03 265);
+    --foreground: oklch(0.95 0.01 265);
+    --card: oklch(0.18 0.04 265);
+    --card-foreground: oklch(0.95 0.01 265);
+    --popover: oklch(0.22 0.05 265);
+    --popover-foreground: oklch(0.95 0.01 265);
+    --primary: oklch(0.7 0.2 285);
+    --primary-foreground: oklch(0.1 0.05 285);
+    --secondary: oklch(0.3 0.08 220);
+    --secondary-foreground: oklch(0.9 0.03 220);
+    --muted: oklch(0.25 0.05 265);
+    --muted-foreground: oklch(0.6 0.02 265);
+    --accent: oklch(0.35 0.1 285);
+    --accent-foreground: oklch(0.95 0.02 285);
+    --destructive: oklch(0.65 0.2 25);
+    --destructive-foreground: oklch(0.1 0.05 25);
+    --border: oklch(0.25 0.05 265);
+    --input: oklch(0.28 0.05 265);
+    --ring: oklch(0.7 0.2 285 / 0.7);
+    --chart-1: oklch(0.75 0.2 50);
+    --chart-2: oklch(0.7 0.18 130);
+    --chart-3: oklch(0.7 0.2 285);
+    --chart-4: oklch(0.75 0.15 220);
+    --chart-5: oklch(0.8 0.1 330);
+    --sidebar: oklch(0.18 0.04 265);
     --sidebar-foreground: oklch(0.95 0.01 265);
     --sidebar-primary: oklch(0.7 0.2 285);
     --sidebar-primary-foreground: oklch(0.1 0.05 285);
@@ -115,103 +86,65 @@
 
 /* --- Base Styles Layer (Mostly Unchanged) --- */
 @layer base {
-  /* Core resets - Kept exactly as original */
   * {
-    border-color: var(--border); /* Uses the variable directly */
-    outline-color: var(--ring);   /* Uses the variable directly */
+    border-color: var(--border);
+    outline-color: var(--ring);
   }
-
   body {
     background-color: var(--background);
     color: var(--foreground);
-    /* ADDED: Smooth transition for background/color changes (e.g., theme toggle) */
     transition: background-color 0.3s ease-in-out, color 0.3s ease-in-out;
   }
-
-  /* Text-size adjust - Kept exactly as original */
   :host {
-    /* iOS/Safari */
     -webkit-text-size-adjust: 100%;
-    /* Chrome, Android, Edge */
     text-size-adjust: 100%;
   }
-
-  /* Dialog backdrop blur - Kept exactly as original */
   [data-nextjs-dialog-backdrop] {
-    /* Safari */
     -webkit-backdrop-filter: blur(10px);
-    /* Chrome, Firefox, Edge */
     backdrop-filter: blur(10px);
   }
-
-  /* Error stack mask fade - Kept exactly as original */
   [data-nextjs-container-errors-pseudo-html-collapse='true']
   .nextjs__container_errors__component-stack code {
-    /* Edge, older WebKit */
     -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 10%);
-    /* Chrome, Firefox */
     mask-image: linear-gradient(to bottom, transparent 0%, black 10%);
   }
-
-  /* User-select resets - Kept exactly as original */
   .dev-tools-indicator-item {
-    /* Safari, Chrome */
     -webkit-user-select: none;
-    /* Firefox, IE10+ */
     user-select: none;
   }
   [data-nextjs-call-stack-frame] {
-    /* IE10+ */
     -ms-user-select: text;
-    /* Firefox */
     -moz-user-select: text;
-    /* Safari, Chrome */
     -webkit-user-select: text;
-    /* Standard */
     user-select: text;
   }
-
-  /* Appearance ordering - Kept exactly as original */
   button {
-    /* older WebKit first */
     -webkit-appearance: none;
-    /* standard */
     appearance: none;
-    border-radius: 0; /* Base reset, components should override */
+    border-radius: 0;
     border: 0;
     padding: 0;
     margin: 0;
     background: none;
   }
-
-  /* Background-clip text - Kept exactly as original */
   .nextjs-container-build-error-version-status > .turbopack-text {
-    /* Safari */
     -webkit-background-clip: text;
-    /* standard */
     background-clip: text;
-    /* Safari text-fill */
     -webkit-text-fill-color: transparent;
   }
 }
 
-/* --- Components Layer (Optional Additions) --- */
-/* ADDED: Example base styles for components using theme variables */
+/* --- Components Layer (Example Additions) --- */
 @layer components {
-  /* Example: Add transitions to buttons for smoother hover effects */
   .btn {
     @apply transition-colors duration-200;
     border-radius: var(--radius);
   }
-
-  /* Example: Add transitions and radius to cards */
   .card {
     @apply bg-card text-card-foreground transition-colors duration-300;
     border-radius: var(--radius);
-    border-width: 1px;
+    border-width: 1px; /* Ensure border is applied if using var(--border) */
   }
-
-  /* Example: Style inputs using theme variables */
   .input {
     @apply bg-input text-foreground border border-border rounded-md px-3 py-2 text-sm;
     @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ring-offset-background;
@@ -220,5 +153,48 @@
   }
 }
 
-/* …the rest of your CSS… */
-/* Ensure any other custom CSS you had below the original base layer remains here */
+/* --- Custom Scrollbar (Example) --- */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: theme('colors.slate.700 / 0.5');
+  border-radius: 10px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: theme('colors.slate.500');
+  border-radius: 10px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: theme('colors.slate.400');
+}
+
+/* --- Cluster D: Mobile Hand Overlay Fix --- */
+/* Apply this class to the mobile hand overlay container in GameInterface.tsx */
+.mobile-hand-overlay {
+  position: absolute !important; /* Override fixed if necessary, use !important cautiously */
+  bottom: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  height: 55vh; /* As suggested */
+  background-color: oklch(0.12 0.03 265 / 0.95); /* Dark background with opacity, using dark theme bg var */
+  /* Dark theme: oklch(0.12 0.03 265) */
+  /* Light theme: oklch(0.98 0.01 240) - might need theme-aware variable or class */
+  /* Forcing darkish overlay for now: rgba(24, 28, 49, 0.95); /* Adjusted from rgb(15,23,42,.95) to match dark bg */
+  overflow-y: auto;
+  z-index: 40; /* Ensure it's above other content but below critical modals if any */
+  /* Ensure padding and other necessary styles are applied in the component or here */
+  padding: 1rem;
+  padding-top: 3rem; /* Account for potential close button or header inside overlay */
+  box-sizing: border-box;
+}
+
+/* Responsive styling for the overlay using @media query as per suggestion */
+/* This might be redundant if Tailwind's lg:hidden is used, but good for pure CSS control */
+@media (min-width: 768px) { /* MOBILE_BREAKPOINT */
+  .mobile-hand-overlay {
+    display: none; /* Hidden on larger screens */
+  }
+}

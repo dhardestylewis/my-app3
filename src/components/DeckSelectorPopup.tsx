@@ -1,158 +1,136 @@
-"use client";
-
 // src/components/DeckSelectorPopup.tsx
+// F.4: Added visual cues for card definitions not immediately playable on the current floor.
 
-import React, { useState, useEffect } from 'react';
-import { usePlayersStore } from '@/stores/usePlayersStore';
-import Card from './ui/card';
-import { CardData } from '@/data/types';
-import { logDebug } from '@/utils/logger';
-import { MAX_HAND_SIZE } from '@/data/constants';
-import { X } from 'lucide-react';
+'use client';
+import React, { FC, useCallback } from 'react';
+import { usePlayersStore, Player } from '@/stores/usePlayersStore';
+import { useFloorStore } from '@/stores/useFloorStore'; // F.4: Import useFloorStore
+import CardComponent from './ui/Card'; 
+import { CardDefinition, CardData } from '@/data/types'; // CardData might be used for casting
+import { logDebug, logError } from '@/utils/logger';
+import { X, PackagePlus, Layers, Info } from 'lucide-react';
 
 interface DeckSelectorPopupProps {
   onClose: () => void;
 }
 
-export default function DeckSelectorPopup({ onClose }: DeckSelectorPopupProps) {
-  // Local state for selected card IDs
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  
-  // Get data from store using separate selectors to avoid re-render issues
-  const deck = usePlayersStore(state => state.deck);
-  const moveCardsFromDeckToHand = usePlayersStore(state => state.moveCardsFromDeckToHand);
-  const getHumanPlayer = usePlayersStore(state => state.getHumanPlayer);
-  const deckVersion = usePlayersStore(state => state.deckVersion);
+const DeckSelectorPopup: FC<DeckSelectorPopupProps> = ({ onClose }) => {
+  const deckCardDefinitions = usePlayersStore(state => state.deckCardDefinitions);
+  const drawCardInstanceToHandById = usePlayersStore(state => state.drawCardInstanceToHandById);
+  const humanPlayer = usePlayersStore(state => state.getHumanPlayer());
 
-  // Get the current player hand size to enforce limits
-  const humanPlayer = getHumanPlayer();
-  const currentHandSize = humanPlayer?.hand.length || 0;
-  const availableSlots = Math.max(0, MAX_HAND_SIZE - currentHandSize);
+  // F.4: Get current floor context for playability check
+  const currentFloor = useFloorStore(state => state.currentFloor);
+  const canPlayOnFloorSelector = useFloorStore.getState().canPlayOnFloor; // Get the function directly
 
-  // Reset selections when deck changes or popup opens
-  useEffect(() => {
-    setSelectedIds(new Set());
-  }, [deckVersion]);
-
-  // Handle card selection toggle
-  const handleCardClick = (cardId: string) => {
-    setSelectedIds(prev => {
-      const newSelection = new Set(prev);
-      
-      if (newSelection.has(cardId)) {
-        // Remove card if already selected
-        newSelection.delete(cardId);
-      } else if (newSelection.size < availableSlots) {
-        // Add card if we haven't reached the max selectable amount
-        newSelection.add(cardId);
-      } else {
-        logDebug(`Cannot select more than ${availableSlots} cards`, 'DeckSelector');
-      }
-      
-      return newSelection;
-    });
-  };
-
-  // Handle confirmation and adding cards to hand
-  const handleConfirm = () => {
-    if (selectedIds.size === 0) {
-      logDebug('No cards selected to draw', 'DeckSelector');
+  const handleCardDefinitionClick = useCallback((definitionId: string, event?: React.MouseEvent) => {
+    if (!humanPlayer) {
+      logError("DeckSelectorPopup: Cannot draw card, human player not found.", undefined);
+      return;
+    }
+    // Determine playerIndex for the human player
+    const players = usePlayersStore.getState().players;
+    const humanPlayerIndex = players.findIndex(p => p.id === humanPlayer.id);
+    if (humanPlayerIndex === -1) {
+      logError("DeckSelectorPopup: Human player index not found.", undefined);
       return;
     }
 
-    // Convert set to array for the store method
-    const selectedIdsArray = Array.from(selectedIds);
-    
-    logDebug(`Drawing ${selectedIds.size} cards from deck: ${selectedIdsArray.join(', ')}`, 'DeckSelector');
-    
-    moveCardsFromDeckToHand(selectedIdsArray);
-    onClose();
-  };
+    const definition = deckCardDefinitions.find(def => def.id === definitionId);
+    if (!definition) {
+        logError(`DeckSelectorPopup: Clicked card definition ID '${definitionId}' not found.`, undefined);
+        return;
+    }
 
-  // Early return if the deck is empty
-  if (deck.length === 0) {
+    const drawCount = event?.shiftKey ? 5 : 1;
+    logDebug(`${event?.shiftKey ? "Shift+Click" : "Click"} on '${definition.name}' (ID: ${definitionId}): Attempting to draw ${drawCount} instance(s).`, 'DeckSelector');
+
+    for (let i = 0; i < drawCount; i++) {
+      const drawnInstance = drawCardInstanceToHandById(humanPlayerIndex, definitionId);
+      if (!drawnInstance) {
+        logDebug(`DeckSelectorPopup: Failed to draw instance ${i+1} of ${definition.name}.`, 'DeckSelector');
+        break; 
+      }
+    }
+    if (event?.shiftKey && drawCount > 0) {
+        onClose();
+    }
+  }, [humanPlayer, deckCardDefinitions, drawCardInstanceToHandById, onClose]);
+
+
+  if (deckCardDefinitions.length === 0) {
+    // ... (empty state as before)
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-        <div className="bg-card w-full max-w-2xl rounded-lg p-6 shadow-xl border border-border">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+        <div className="bg-card max-w-lg w-full rounded-lg p-6 shadow-xl border">
           <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-bold">Draw from Deck</h2>
-            <button 
-              onClick={onClose}
-              className="p-1 rounded-full hover:bg-muted transition-colors"
-            >
-              <X size={20} />
-            </button>
+            <h2 className="text-xl font-bold flex items-center"><PackagePlus className="mr-2 h-6 w-6 text-primary" /> Draw New Card Instances</h2>
+            <button onClick={onClose} aria-label="Close" className="p-1 hover:bg-muted rounded-full"><X size={20} /></button>
           </div>
-          <p className="text-center py-8">The deck is empty!</p>
-          <div className="flex justify-end mt-4">
-            <button 
-              onClick={onClose}
-              className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md hover:opacity-90 transition-opacity"
-            >
-              Close
-            </button>
+          <p className="text-center py-8 text-muted-foreground">No card definitions available in the deck!</p>
+          <div className="flex justify-end">
+            <button onClick={onClose} className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md hover:opacity-90">Close</button>
           </div>
         </div>
       </div>
     );
   }
 
+  const helpText = "Click a card to draw one instance. Shift+Click for five. Dimmed cards may not be playable on the current floor.";
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="bg-card w-full max-w-4xl rounded-lg p-6 shadow-xl border border-border">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+      <div className="bg-card w-full max-w-4xl rounded-lg shadow-xl border p-6 flex flex-col max-h-[90vh]">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold">Draw from Deck</h2>
-          <button 
-            onClick={onClose}
-            className="p-1 rounded-full hover:bg-muted transition-colors"
-          >
-            <X size={20} />
-          </button>
+          <h2 className="text-xl font-bold flex items-center"><PackagePlus className="mr-2 h-6 w-6 text-primary" /> Draw New Card Instances ({deckCardDefinitions.length} types available)</h2>
+          <button onClick={onClose} aria-label="Close" className="p-1 hover:bg-muted rounded-full"><X size={20} /></button>
         </div>
-        
-        <div className="mb-4">
-          <p>
-            Select up to {availableSlots} card{availableSlots !== 1 ? 's' : ''} to add to your hand. 
-            <span className="text-primary font-medium ml-2">
-              {selectedIds.size} of {availableSlots} selected
-            </span>
-          </p>
+        <p className="text-sm text-muted-foreground mb-4">
+          {helpText}
+        </p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 overflow-y-auto flex-grow p-1 custom-scrollbar">
+          {deckCardDefinitions.map((definition: CardDefinition) => {
+            // F.4: Check if this definition is playable on the current negotiation floor
+            const isPlayableOnCurrentFloor = canPlayOnFloorSelector(definition, currentFloor);
+            
+            return (
+              <div key={definition.id} className="flex justify-center items-center" 
+                   title={!isPlayableOnCurrentFloor ? `${definition.name} - May not be playable on current floor ${currentFloor}.` : definition.name}>
+                <div 
+                  onClick={(e) => handleCardDefinitionClick(definition.id, e)} 
+                  className="cursor-pointer transition-transform hover:scale-105 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-lg"
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleCardDefinitionClick(definition.id, undefined);}}
+                  aria-label={`Draw ${definition.name}${!isPlayableOnCurrentFloor ? ' (may not be playable on current floor)' : ''}`}
+                >
+                  <CardComponent
+                    card={definition as CardData} // Cast for prop compatibility
+                    isSelected={false} 
+                    // F.4: Use isPlayableOnCurrentFloor for visual hint (dimming)
+                    isPlayable={isPlayableOnCurrentFloor} 
+                    floorRestricted={!isPlayableOnCurrentFloor && !!definition.requiresFloor?.length} // Indicate if restriction is floor-based
+                    isPlayed={false}
+                    // displayCount is not relevant for deck definitions
+                  />
+                  {!isPlayableOnCurrentFloor && (
+                    <div className="absolute top-1 left-1 p-0.5 bg-amber-500/80 rounded-full text-white" title="Not playable on current floor">
+                        <Info size={12} />
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
-        
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 max-h-[60vh] overflow-y-auto p-2">
-          {deck.map((card: CardData) => (
-            <div key={card.id} className="flex justify-center">
-              <Card
-                card={card}
-                isDraggable={false}
-                isSelected={selectedIds.has(card.id)}
-                onCardClick={handleCardClick}
-                selectableOnly={true}
-              />
-            </div>
-          ))}
-        </div>
-        
-        <div className="flex justify-end gap-3 mt-6">
-          <button 
-            onClick={onClose}
-            className="px-4 py-2 bg-muted text-muted-foreground rounded-md hover:opacity-90 transition-opacity"
-          >
-            Cancel
-          </button>
-          <button 
-            onClick={handleConfirm}
-            disabled={selectedIds.size === 0}
-            className={`px-4 py-2 rounded-md transition-opacity ${
-              selectedIds.size === 0 
-                ? 'bg-muted text-muted-foreground cursor-not-allowed opacity-70' 
-                : 'bg-primary text-primary-foreground hover:opacity-90'
-            }`}
-          >
-            Confirm ({selectedIds.size})
+        <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-border">
+          <button onClick={onClose} className="px-6 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 flex items-center">
+            <Layers className="mr-2 h-5 w-5" /> Done
           </button>
         </div>
       </div>
     </div>
   );
-}
+};
+
+export default DeckSelectorPopup;

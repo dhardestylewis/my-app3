@@ -1,21 +1,20 @@
+// src/components/ui/Card.tsx
+// F.3: Refactored to accept and display a proposal/counter count.
+
 "use client";
+import React, { useMemo } from 'react';
 import { motion } from "framer-motion";
 import Image from 'next/image';
-import CardImage from "@/components/CardImage";
 import { cn } from "@/lib/utils";
 import { CardData } from "@/data/types";
 import * as LucideIcons from 'lucide-react';
-import { useDraggable } from '@dnd-kit/core';
-import { CSS } from '@dnd-kit/utilities';
+import { MAX_STORIES } from '@/data/constants';
+import { DEFAULT_CARD_IMAGE_PATH } from '@/data/deckData';
 
-// Helper to get Lucide icon component by name string
+// Dynamic icon lookup
 const DynamicIcon = ({ name, ...props }: { name?: string } & LucideIcons.LucideProps) => {
-  // Handle potential mapping if names don't match exactly
-  const iconName = name === 'Home2' ? 'Home' : name; // Example mapping
-  const IconComponent = iconName ? (LucideIcons as any)[iconName] : null;
-  if (!IconComponent) {
-    return <LucideIcons.HelpCircle {...props} />; // Default fallback icon
-  }
+  const iconName = name === 'Home2' ? 'Home' : name; 
+  const IconComponent = iconName && iconName in LucideIcons ? (LucideIcons as any)[iconName] : LucideIcons.HelpCircle;
   return <IconComponent {...props} />;
 };
 
@@ -23,135 +22,145 @@ interface CardProps {
   card: CardData;
   isSelected?: boolean;
   isPlayable?: boolean;
-  isPlayed?: boolean;
-  onCardClick?: (id: string) => void;
-  isDraggable?: boolean; // Control draggability
-  selectableOnly?: boolean; // NEW: When true, card is clickable but not draggable
+  isPlayed?: boolean;        // True if card is shown in a proposal slot, not in hand
+  floorRestricted?: boolean;
+  displayCount?: number;     // F.3: The count of this card being proposed/countered from hand
 }
 
-export default function Card({ 
-  card, 
-  isSelected = false, 
-  isPlayable = true, 
-  isPlayed = false, 
-  onCardClick,
-  isDraggable = true, // Default to true
-  selectableOnly = false // NEW: Default to false
+export default function CardComponent({
+  card,
+  isSelected = false,
+  isPlayable = true,
+  isPlayed = false,
+  floorRestricted = false,
+  displayCount // F.3: New prop
 }: CardProps) {
-  // Only set up draggable if the card is playable, not played, and dragging is enabled
-  // Update the shouldBeDraggable logic:
-  // Only set up draggable if the card is playable, not played, dragging is enabled, and not in selectableOnly mode
-  const shouldBeDraggable = isDraggable && isPlayable && !isPlayed && !selectableOnly;
-
-  // Set up draggable functionality from dnd-kit
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-    id: card.id,
-    disabled: !shouldBeDraggable
-  });
   
-  // Handle click events only if the card is playable and not played
-  // Update the handleClick function to always call onCardClick when in selectableOnly mode:
-  const handleClick = () => {
-    if (onCardClick && ((!isPlayed && isPlayable) || selectableOnly)) {
-      onCardClick(card.id);
-    }
-  };
-  
-  // Determine visual cues based on state
-  const ringColor = isSelected ? "ring-emerald-500" : isPlayed ? "ring-blue-900/30" : isPlayable ? "ring-white/20" : "ring-red-700/50";
-  const opacity = !isPlayed && !isPlayable ? "opacity-60" : isDragging ? "opacity-80" : "opacity-100";
-  const cursor = !isPlayed && isPlayable ? "cursor-pointer" : "cursor-default";
-  const bgColor = isPlayed ? "bg-slate-200/70" : "bg-gradient-to-br from-white via-slate-50 to-slate-100";
+  const {
+    instanceId, // instanceId of the stack in hand, or of the played card
+    name = "Unnamed Card",
+    image = DEFAULT_CARD_IMAGE_PATH, 
+    category = "N/A",
+    netScoreImpact,
+    requiresFloor = [],
+    displayInfo = {}
+  } = card || {};
 
-  // Determine score display text and color based on rescaled score
-  let scoreText = "";
-  let scoreColor = "text-slate-600";
-  const netScore = card.netScoreImpact ?? 0; // Default to 0 if undefined
+  const { 
+    summary = '-', 
+    icon = 'HelpCircle'
+  } = displayInfo;
 
-  if (netScore > 0) {
-      scoreText = `+${netScore} Dev`; // Positive -> Developer
-      scoreColor = "text-amber-700 font-semibold";
-  } else if (netScore < 0) {
-      scoreText = `${netScore} Comm`; // Negative -> Community
-      scoreColor = "text-lime-700 font-semibold";
-  } else { // Zero score
-      scoreText = `±0 Balance`;
-      scoreColor = "text-slate-500";
+  const floorRestrictionText = useMemo(() => { /* ... (as before) ... */ 
+    if (!requiresFloor || requiresFloor.length === 0) return 'Any Floor';
+    return requiresFloor.map(f => {
+      if (typeof f === 'string') {
+        if (f.toLowerCase() === 'ground') return 'Ground';
+        if (f.toLowerCase() === 'roof') return `Roof (${MAX_STORIES})`;
+        return f.charAt(0).toUpperCase() + f.slice(1);
+      }
+      return `F${f}`;
+    }).join(' / ');
+  }, [requiresFloor]);
+
+  const netScore = netScoreImpact ?? 0;
+  let scoreText = '±0 Bal';
+  let scoreColor = 'text-slate-600';
+  if (netScore > 0) { /* ... (as before) ... */ 
+    scoreText = `+${netScore} Dev`;
+    scoreColor = 'text-amber-700 font-semibold';
+  } else if (netScore < 0) { /* ... (as before) ... */ 
+    scoreText = `${netScore} Comm`;
+    scoreColor = 'text-lime-700 font-semibold';
   }
 
-  // Apply transform for dragging
-  const dragStyles = shouldBeDraggable ? {
-    transform: transform ? CSS.Transform.toString(transform) : undefined,
-    transition: isDragging ? 'none' : undefined,
-    zIndex: isDragging ? 999 : undefined,
-  } : {};
+
+  const ringColor = isSelected
+    ? 'ring-emerald-500'
+    : isPlayed
+      ? 'ring-blue-900/30'
+      : floorRestricted
+        ? 'ring-red-700/50'
+        : isPlayable
+          ? 'ring-slate-300/30'
+          : 'ring-slate-500/30';
+
+  const visualOpacity = (!isPlayed && (floorRestricted || !isPlayable)) ? 'opacity-70' : 'opacity-100';
+  
+  const bgColor = isPlayed
+    ? 'bg-slate-200/70'
+    : floorRestricted
+      ? 'bg-gradient-to-br from-white/90 via-red-50/90 to-red-100/90'
+      : 'bg-gradient-to-br from-white via-slate-50 to-slate-100';
 
   return (
     <motion.div
-      ref={shouldBeDraggable ? setNodeRef : undefined}
-      style={dragStyles}
       layout
       className={cn(
-        "relative w-36 h-56 md:w-40 md:h-60 rounded-lg overflow-hidden transition-all duration-200 shadow-md hover:shadow-lg",
+        "relative w-36 h-56 md:w-40 md:h-60 rounded-lg overflow-hidden transition-all duration-200 shadow-md",
         bgColor,
-        `ring-2 ${ringColor} ring-opacity-80`,
-        opacity,
-        cursor,
-        isDragging ? "scale-105 shadow-xl" : "",
-        isSelected ? "ring-4 shadow-emerald-500/30 scale-105 z-10" : (isPlayable && !isPlayed ? "hover:scale-105" : "")
+        `ring-2 ${ringColor}`,
+        visualOpacity,
+        isSelected && !isPlayed ? 'ring-4 shadow-sky-500/40 scale-105 z-10' : '' // Updated selection color to sky blue
       )}
-      whileTap={isPlayable && !isPlayed && !isDragging ? { scale: 0.97 } : {}}
-      onClick={handleClick}
-      title={card.displayInfo?.summary || card.name} // Tooltip for summary
-      {...(shouldBeDraggable ? attributes : {})}
-      {...(shouldBeDraggable ? listeners : {})}
+      title={summary || name}
     >
-        {/* Simplified Content Area */}
-        <div className="p-2 flex flex-col h-full text-slate-800">
-             {/* Top Row: Icon + Name */}
-             <div className="flex items-center gap-1.5 mb-1 flex-shrink-0">
-                 <DynamicIcon name={card.displayInfo?.icon ?? 'HelpCircle'} size={16} className="text-slate-600 flex-shrink-0" />
-                 <h3 className="font-semibold text-xs leading-tight truncate flex-grow" title={card.name}>{card.name}</h3>
-             </div>
-
-             {/* Image Area */}
-             <div className="relative w-full h-16 md:h-20 bg-slate-200 rounded overflow-hidden my-1 shadow-inner flex-shrink-0">
-              <CardImage
-                src={card.image || '/cards/placeholder.png'}
-                alt={card.name}
-                objectFit="cover"
-                onError={(e) => (e.currentTarget.src = '/cards/placeholder.png')}
-              />
-             </div>
-
-             {/* Middle Row: Category + Cost/SF */}
-              <div className="flex justify-between items-center text-[10px] text-slate-500 mb-1 flex-shrink-0">
-                  <span className="bg-slate-200 px-1 rounded text-slate-600">{card.category}</span>
-                  <span className="font-medium">{card.displayInfo?.cost || (card.baseSqft ? `~${(card.baseSqft / 1000).toFixed(0)}k SF` : '')}</span>
-              </div>
-
-             {/* Bottom Row: Score + Summary (Ensure it fits) */}
-             <div className="mt-auto border-t border-slate-300/70 pt-1 space-y-0.5 text-center flex-shrink-0">
-                  <p className={`font-bold text-sm ${scoreColor}`}>{scoreText}</p>
-                  <p className="text-[9px] text-slate-600 leading-snug h-6 overflow-hidden px-1">
-                       {card.displayInfo?.summary || "-"}
-                  </p>
-             </div>
+      {/* Main card content container */}
+      <div className="p-2 flex flex-col h-full text-slate-800 pointer-events-none">
+        {/* ... (icon, name, image, category, floorRestrictionText, score text as before) ... */}
+        <div className="flex items-center gap-1.5 mb-1 flex-shrink-0">
+          <DynamicIcon name={icon} size={16} className="text-slate-600 flex-shrink-0" />
+          <h3 className="font-semibold text-xs leading-tight truncate flex-grow" title={name}>{name}</h3>
         </div>
-
-        {/* Overlays - Simplified */}
-        {isSelected && (
-          <motion.div 
-            layoutId="selectedIndicator" 
-            className="absolute inset-0 rounded-lg border-2 border-emerald-400 pointer-events-none" 
+        <div className="relative w-full h-16 md:h-20 bg-slate-200 rounded overflow-hidden my-1 shadow-inner flex-shrink-0">
+          <Image
+            src={image}
+            alt={name || 'Card image'}
+            fill
+            style={{ objectFit: 'cover' }}
+            sizes="(max-width: 768px) 144px, 160px"
+            priority={false}
+            onError={e => { (e.target as HTMLImageElement).src = DEFAULT_CARD_IMAGE_PATH; }}
           />
-        )}
-        {!isPlayable && !isPlayed && (
-          <div className="absolute inset-0 bg-red-900/10 rounded-lg pointer-events-none" />
-        )}
-        {isDragging && (
-          <div className="absolute inset-0 bg-emerald-500/20 rounded-lg pointer-events-none" />
-        )}
+        </div>
+        <div className="flex justify-between items-center text-[10px] text-slate-500 mb-1 flex-shrink-0">
+          <span className="bg-slate-200 px-1 rounded text-slate-600">{category}</span>
+          {requiresFloor && requiresFloor.length > 0 && (
+            <span className={cn('px-1 rounded', floorRestricted ? 'bg-red-100 text-red-700 font-semibold' : 'bg-slate-200 text-slate-600')}>
+              {floorRestrictionText}
+            </span>
+          )}
+        </div>
+        <div className="mt-auto border-t border-slate-300/70 pt-1 space-y-0.5 text-center flex-shrink-0">
+          <p className={`font-bold text-sm ${scoreColor}`}>{scoreText}</p>
+          <p className="text-[9px] text-slate-600 leading-snug h-6 overflow-hidden px-1">
+            {summary}
+          </p>
+        </div>
+      </div>
+
+      {/* F.3: Display Count Badge - only if not 'isPlayed' (i.e., for hand cards) and count > 0 */}
+      {displayCount && displayCount > 0 && !isPlayed && (
+        <motion.div 
+            layoutId={`displayCountBadge-${instanceId}`} // Animate if needed
+            className="absolute top-0.5 right-0.5 bg-blue-500 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center shadow-lg border-2 border-white dark:border-slate-800"
+            aria-label={`Proposing ${displayCount} of this card`}
+        >
+          {displayCount}
+        </motion.div>
+      )}
+
+      {/* Visual indicator for general selection (e.g. ring), if needed beyond the count badge */}
+      {isSelected && !isPlayed && instanceId && ( 
+        <motion.div
+          layoutId={`selectedCardHighlight-${instanceId}`} 
+          className="absolute inset-0 rounded-lg border-2 border-sky-400 pointer-events-none" // Changed to sky blue
+          transition={{ type: "spring", stiffness: 500, damping: 30 }}
+        />
+      )}
+      {floorRestricted && !isPlayed && (
+         <div className="absolute inset-0 bg-red-500/5 rounded-lg pointer-events-none" />
+      )}
     </motion.div>
   );
 }

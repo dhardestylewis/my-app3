@@ -1,29 +1,28 @@
 // src/hooks/useMemoizedGameLogic.ts
+// Corrected for usePlayersStore API changes (removed deckVersion).
+
 import { useMemo } from 'react';
-import { CardData } from '@/data/types';
+import { CardData } from '@/data/types'; // CardData is CardInstance
 import { usePlayersStore } from '@/stores/usePlayersStore';
 import { logDebug } from '@/utils/logger';
 import { BALANCE_THRESHOLD } from '@/data/constants';
 
 /**
- * Custom hook for memoized card analysis
- * This prevents recalculating expensive card analysis on every render
+ * Custom hook for memoized card analysis.
+ * This prevents recalculating expensive card analysis on every render.
  */
 export function useRemainingCardAnalysis() {
-  // We need to add a version/hash to the player store to track when the deck changes
   const getRemainingCards = usePlayersStore(state => state.getRemainingCards);
-  const deckVersion = usePlayersStore(state => state.deckVersion); // New field to add
-  const currentScore = usePlayersStore(state => state.currentScore); // New field to derive from building store
-  
-  // Memoize the expensive calculation based on deck version
+  // deckVersion is removed from usePlayersStore as deckCardDefinitions is static.
+  // Re-memoization will depend on changes to currentScore or the output of getRemainingCards if its dependencies change.
+  const currentScore = usePlayersStore(state => state.currentScore); // Assuming this is the relevant score
+
   return useMemo(() => {
-    // Performance measurement in dev
     const startTime = performance.now();
     
-    const remainingCards = getRemainingCards();
+    const remainingCards = getRemainingCards(); // Call inside useMemo to get fresh data when dependencies change
     const analysis = analyzeRemainingCards(remainingCards);
     
-    // Calculate if balance is impossible based on the analysis
     const bestPossibleFinalScore = currentScore + analysis.maxPositiveImpact;
     const worstPossibleFinalScore = currentScore + analysis.maxNegativeImpact;
     
@@ -42,24 +41,22 @@ export function useRemainingCardAnalysis() {
       isBalanceImpossible,
       balanceRange: [worstPossibleFinalScore, bestPossibleFinalScore]
     };
-  }, [getRemainingCards, deckVersion, currentScore]);
+  }, [getRemainingCards, currentScore]); // Dependencies: getRemainingCards function ref, currentScore
 }
 
 /**
- * Pure function to analyze remaining cards
- * Extracted for reuse and testing
+ * Pure function to analyze remaining cards.
+ * Extracted for reuse and testing.
  */
 export function analyzeRemainingCards(cards: CardData[]) {
-  // Group cards by positive/negative impact
   const positiveCards = cards
     .filter(card => typeof card.netScoreImpact === 'number' && card.netScoreImpact > 0)
-    .sort((a, b) => (b.netScoreImpact ?? 0) - (a.netScoreImpact ?? 0)); // Sort descending
+    .sort((a, b) => (b.netScoreImpact ?? 0) - (a.netScoreImpact ?? 0));
 
   const negativeCards = cards
     .filter(card => typeof card.netScoreImpact === 'number' && card.netScoreImpact < 0)
-    .sort((a, b) => (a.netScoreImpact ?? 0) - (b.netScoreImpact ?? 0)); // Sort ascending (most negative first)
+    .sort((a, b) => (a.netScoreImpact ?? 0) - (b.netScoreImpact ?? 0));
 
-  // Calculate total possible impacts
   const maxPositiveImpact = positiveCards.reduce(
     (sum, card) => sum + (card.netScoreImpact ?? 0),
     0
@@ -70,7 +67,6 @@ export function analyzeRemainingCards(cards: CardData[]) {
     0
   );
 
-  // Get the most powerful cards in each direction
   const topPositiveCards = positiveCards.slice(0, 5);
   const topNegativeCards = negativeCards.slice(0, 5);
 
@@ -84,4 +80,3 @@ export function analyzeRemainingCards(cards: CardData[]) {
     negativeCardCount: negativeCards.length
   };
 }
-

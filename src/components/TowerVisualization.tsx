@@ -1,259 +1,196 @@
+// src/components/TowerVisualization.tsx
+// Corrected React.cloneElement and PlayerRoleType issues.
+
 "use client";
-import { useState, useEffect, useMemo } from 'react';
-// Import the store and necessary types/helpers
+import React, { useState, useEffect, useMemo } from 'react';
 import { useBuildingStore, BuildingUse } from '@/stores/useBuildingStore';
 import { Building, Users, Scale, Layers } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { PlayerRole } from '@/data/types'; // Import PlayerRole
 
-// Helper function to determine height based on card category (copied from store)
 const getCardHeight = (category: string | undefined): number => {
   return category === 'Housing' ? 12 : 15;
 };
 
-const TowerVisualization = () => {
-  // Select the raw building state object
-  const buildingState = useBuildingStore(state => state.building);
+export interface FloorSummaryItem {
+  floor: number;
+  sqft: number;
+  uses: BuildingUse[];
+  score: number;
+}
 
-  // Use useMemo to calculate derived state based on buildingState
-  const floorSummary = useMemo(() => {
-    // Logic copied and adapted from the store's getFloorSummary getter
-    return Object.entries(buildingState.floors)
-      .map(([floorNum, data]) => ({
-        floor: parseInt(floorNum),
-        sqft: data.sqftUsed || 0,
-        uses: data.uses || [],
-        score: data.score || 0,
-      }))
-      .sort((a, b) => a.floor - b.floor);
-  }, [buildingState.floors]); // Recalculate only when floors change
+export interface TowerVisualizationProps {
+  floors: FloorSummaryItem[];
+  currentFloor: number;
+}
 
+const TowerVisualization: React.FC<TowerVisualizationProps> = ({ 
+  floors: floorSummaryFromProps, 
+  currentFloor: currentNegotiationFloor 
+}) => {
+  const buildingStateForTotals = useBuildingStore(state => state.building);
+  
   const totalScore = useMemo(() => {
-    // Logic copied and adapted from the store's getCurrentNetScore getter
-    let netScore = buildingState.baselineScore + buildingState.scorePenaltiesTotal;
-    for (const floorNumber in buildingState.floors) {
-      netScore += buildingState.floors[floorNumber]?.score || 0;
-    }
+    let netScore = buildingStateForTotals.baselineScore + buildingStateForTotals.scorePenaltiesTotal;
+    floorSummaryFromProps.forEach(floorData => {
+        netScore += floorData.score;
+    });
     return netScore;
-  }, [buildingState.floors, buildingState.baselineScore, buildingState.scorePenaltiesTotal]); // Recalculate when relevant parts change
-
-  // baselineScore can be selected directly as it's a primitive
-  const baselineScore = useBuildingStore(state => state.building.baselineScore);
+  }, [floorSummaryFromProps, buildingStateForTotals.baselineScore, buildingStateForTotals.scorePenaltiesTotal]);
 
   const [compactView, setCompactView] = useState(false);
 
-  // Check if screen is small to automatically toggle compact view
   useEffect(() => {
-    const checkWindowSize = () => {
-      setCompactView(window.innerWidth < 768);
-    };
-
-    // Initial check
+    const checkWindowSize = () => setCompactView(window.innerWidth < 768);
     checkWindowSize();
-
-    // Set up listener for window resize
     window.addEventListener('resize', checkWindowSize);
-
-    // Clean up
     return () => window.removeEventListener('resize', checkWindowSize);
   }, []);
 
-  // Function to determine floor color based on score
-  const getFloorStyles = useMemo(() => (score: number) => {
-    let bgColor, textColor, borderColor, icon;
+  const getFloorStyles = useMemo(() => (score: number): { bgColor: string; textColor: string; borderColor: string; icon: React.ReactNode; } => {
+    let bgColor, textColor, borderColor, iconNode: React.ReactNode;
+    let iconBaseClass = "h-4 w-4 sm:h-5 sm:w-5"; // Base class for icons
 
     if (score > 0) {
-      // Developer-favoring (positive score) - amber/gold
       const intensity = Math.min(Math.abs(score) / 20, 1);
-      bgColor = `rgba(245, 158, 11, ${0.3 + intensity * 0.3})`;
-      borderColor = "border-amber-600";
-      textColor = "text-amber-400";
-      icon = <Building className="h-4 w-4 text-amber-400" />;
+      bgColor = `rgba(245, 158, 11, ${0.3 + intensity * 0.3})`; 
+      borderColor = "border-amber-600"; 
+      textColor = "text-amber-300"; 
+      iconNode = <Building className={`${iconBaseClass} ${textColor}`} />;
     } else if (score < 0) {
-      // Community-favoring (negative score) - green
       const intensity = Math.min(Math.abs(score) / 20, 1);
-      bgColor = `rgba(16, 185, 129, ${0.2 + intensity * 0.3})`;
-      borderColor = "border-emerald-700";
-      textColor = "text-emerald-400";
-      icon = <Users className="h-4 w-4 text-emerald-400" />;
-    } else {
-      // Neutral - slate
-      bgColor = "rgba(51, 65, 85, 0.5)";
-      borderColor = "border-slate-600";
-      textColor = "text-slate-400";
-      icon = <Scale className="h-4 w-4 text-slate-400" />;
+      bgColor = `rgba(16, 185, 129, ${0.3 + intensity * 0.3})`; 
+      borderColor = "border-emerald-600"; 
+      textColor = "text-emerald-300"; 
+      iconNode = <Users className={`${iconBaseClass} ${textColor}`} />;
+    } else { 
+      bgColor = "rgba(51, 65, 85, 0.6)"; 
+      borderColor = "border-slate-600"; 
+      textColor = "text-slate-300"; 
+      iconNode = <Scale className={`${iconBaseClass} ${textColor}`} />;
     }
-
-    return { bgColor, textColor, borderColor, icon };
+    return { bgColor, textColor, borderColor, icon: iconNode };
   }, []);
 
-  // Format score with sign
-  const formatScore = (score: number) => {
-    return score > 0 ? `+${score}` : score.toString();
-  };
-
-  // Calculate the score displayed in the header (total score including baseline)
-  const displayScore = totalScore; // Use the memoized totalScore
+  const formatScore = (score: number) => (score > 0 ? `+${score}` : score.toString());
 
   return (
-    <div className="w-full h-full flex flex-col p-4">
-      {/* Building Info Header */}
-      <div className="flex justify-between items-center mb-4 bg-slate-800/70 p-3 rounded-lg border border-slate-700 sticky top-0 z-10">
+    <div className="w-full h-full flex flex-col p-2 sm:p-4 bg-slate-800/30 rounded-lg">
+      <div className="flex justify-between items-center mb-4 bg-slate-700/50 p-3 rounded-md border border-slate-600 sticky top-0 z-10 backdrop-blur-sm">
+        {/* Header Content ... */}
         <div className="flex items-center">
           <Layers className="h-5 w-5 text-slate-400 mr-2" />
-          <h2 className="text-lg font-semibold text-slate-300">Building Visualization</h2>
+          <h2 className="text-base sm:text-lg font-semibold text-slate-200">Building Status</h2>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 sm:gap-4">
           <div className="text-center">
-            <p className="text-xs text-slate-400">Balance Score</p>
-            <p className={`text-lg font-bold ${
-              displayScore > 0
-                ? 'text-amber-400'
-                : displayScore < 0
-                  ? 'text-emerald-400'
-                  : 'text-slate-300'
-            }`}>
-              {formatScore(displayScore)} {/* Use memoized displayScore */}
+            <p className="text-xs text-slate-400">Balance</p>
+            <p className={`text-md sm:text-lg font-bold ${totalScore > 0 ? 'text-amber-400' : totalScore < 0 ? 'text-emerald-400' : 'text-slate-300'}`}>
+              {formatScore(totalScore)}
             </p>
           </div>
           <div className="text-center">
             <p className="text-xs text-slate-400">Floors</p>
-            <p className="text-lg font-bold text-slate-300">
-              {floorSummary.length} {/* Use memoized floorSummary */}
+            <p className="text-md sm:text-lg font-bold text-slate-200">
+              {floorSummaryFromProps.length}
             </p>
           </div>
-          {/* Toggle for compact view */}
           <button
-            className="text-xs text-slate-400 border border-slate-700 rounded px-2 py-1 hover:bg-slate-700"
+            className="text-xs text-slate-300 border border-slate-600 rounded px-2 py-1 hover:bg-slate-600/70 transition-colors"
             onClick={() => setCompactView(!compactView)}
-            title={compactView ? "Show full view" : "Show compact view"}
+            title={compactView ? "Show Full View" : "Show Compact View"}
           >
-            {compactView ? "Expand" : "Compact"}
+            {compactView ? "Full" : "Compact"}
           </button>
         </div>
       </div>
 
-      {/* Empty state message */}
-      {floorSummary.length === 0 && (
-        <div className="flex-grow flex items-center justify-center">
-          <div className="text-center text-slate-500 italic p-8 bg-slate-800/40 rounded-lg border border-slate-700">
-            <Layers className="h-12 w-12 mx-auto mb-3 text-slate-600" />
-            <p className="mb-2">No floors built yet</p>
-            <p className="text-xs">Start negotiating to construct your building!</p>
+      {floorSummaryFromProps.length === 0 && (
+          <div className="flex-grow flex items-center justify-center">
+            <div className="text-center text-slate-500 italic p-8 bg-slate-700/30 rounded-lg border border-slate-600">
+                <Layers className="h-12 w-12 mx-auto mb-3 text-slate-500" />
+                <p className="mb-2 text-slate-300">No floors built yet.</p>
+                <p className="text-xs">Start negotiating to construct your building!</p>
+            </div>
           </div>
-        </div>
       )}
 
-      {/* Tower Visualization */}
-      <div className="flex-grow relative flex flex-col justify-end overflow-y-auto scrollbar-thin scrollbar-thumb-slate-600 scrollbar-track-transparent pb-2 pr-2">
-        {/* Ground Level */}
-        <div className="h-2 w-full bg-slate-700 mb-2 rounded-sm"></div>
-
-        {/* Floors from bottom to top */}
+      <div className="flex-grow relative flex flex-col justify-end overflow-y-auto scrollbar-thin scrollbar-thumb-slate-600 scrollbar-track-transparent pb-2 pr-1">
+        <div className="h-1 sm:h-2 w-full bg-slate-600 mb-1 sm:mb-2 rounded-sm"></div>
         <AnimatePresence>
-          {floorSummary.map((floor) => { // Use memoized floorSummary
+          {floorSummaryFromProps.map((floor) => {
             const { bgColor, textColor, borderColor, icon } = getFloorStyles(floor.score);
-
+            const isCurrent = floor.floor === currentNegotiationFloor;
             return (
               <motion.div
                 key={`floor-${floor.floor}`}
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                transition={{ duration: 0.3 }}
-                className={`mb-2 rounded-md border ${borderColor} overflow-hidden`}
+                layout
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20, transition: {duration: 0.2} }}
+                transition={{ type: "spring", stiffness: 260, damping: 20, duration: 0.3 }}
+                className={`mb-1.5 sm:mb-2 rounded-md border ${borderColor} ${isCurrent ? 'ring-2 ring-sky-400 ring-offset-2 ring-offset-slate-800 shadow-lg' : 'shadow-md'} overflow-hidden`}
                 style={{ backgroundColor: bgColor }}
               >
                 {compactView ? (
-                  // Compact view
-                  <div className="py-2 px-3 flex items-center justify-between">
-                    <div className="flex items-center">
-                      <div className="flex-shrink-0 w-8 h-8 bg-slate-800 rounded-full flex items-center justify-center mr-2 border border-slate-600">
-                        <span className="font-semibold text-sm">{floor.floor}</span>
-                      </div>
-                      <div>
-                        <span className={`text-sm font-medium ${textColor}`}>
-                          Floor {floor.floor}
-                        </span>
-                      </div>
+                    <div className={`py-1.5 sm:py-2 px-2 sm:px-3 flex items-center justify-between ${isCurrent ? 'bg-sky-500/10': ''}`}>
+                        <div className="flex items-center">
+                            <div className={`flex-shrink-0 w-6 h-6 sm:w-7 sm:h-7 bg-slate-800/70 rounded-full flex items-center justify-center mr-2 border ${isCurrent ? 'border-sky-400' : 'border-slate-600'}`}>
+                                <span className={`font-semibold text-xs sm:text-sm ${isCurrent ? 'text-sky-300' : 'text-slate-200'}`}>{floor.floor}</span>
+                            </div>
+                            <span className={`text-xs sm:text-sm font-medium ${textColor} ${isCurrent ? 'font-bold' : ''}`}>Floor {floor.floor}</span>
+                        </div>
+                        <div className="flex items-center gap-1 sm:gap-2">
+                            {icon} {/* Render the icon directly */}
+                            <span className={`font-bold text-sm sm:text-base ${textColor}`}>{formatScore(floor.score)}</span>
+                        </div>
                     </div>
-
-                    <div className="flex items-center gap-2">
-                      {icon}
-                      <span className={`font-bold ${textColor}`}>
-                        {formatScore(floor.score)}
-                      </span>
-                    </div>
-                  </div>
                 ) : (
-                  // Full view with details
-                  <div className="p-3 flex items-center">
-                    {/* Floor Number */}
-                    <div className="flex-shrink-0 w-10 h-10 bg-slate-800 rounded-full flex items-center justify-center mr-3 border border-slate-600">
-                      <span className="font-semibold">{floor.floor}</span>
+                    <div className={`p-2 sm:p-3 flex items-center ${isCurrent ? 'bg-sky-500/10': ''}`}>
+                        <div className={`flex-shrink-0 w-8 h-8 sm:w-10 sm:h-10 bg-slate-800/70 rounded-full flex items-center justify-center mr-2 sm:mr-3 border ${isCurrent ? 'border-sky-400' : 'border-slate-600'}`}>
+                            <span className={`font-semibold text-sm sm:text-base ${isCurrent ? 'text-sky-300' : 'text-slate-200'}`}>{floor.floor}</span>
+                        </div>
+                        <div className="flex-grow min-w-0">
+                            <div className="flex items-center">
+                                {icon} {/* Render the icon directly */}
+                                <span className={`ml-1.5 font-semibold ${textColor} truncate text-sm sm:text-base ${isCurrent ? 'font-bold' : ''}`}>
+                                    Floor {floor.floor}
+                                    <span className="text-slate-400 ml-1.5 sm:ml-2 text-xs">({Math.round(floor.sqft).toLocaleString()} sq.ft)</span>
+                                </span>
+                            </div>
+                            <div className="mt-1 flex flex-wrap gap-1 text-xs">
+                                {floor.uses.map((use, idx) => (
+                                    <span key={`use-${floor.floor}-${idx}`}
+                                        className={`px-1.5 py-0.5 rounded truncate max-w-[100px] sm:max-w-[150px] border text-xs ${
+                                            // Corrected: Use imported PlayerRole enum
+                                            use.owner === PlayerRole.Developer 
+                                            ? 'bg-amber-950/60 text-amber-300 border-amber-700/50' 
+                                            : 'bg-emerald-950/60 text-emerald-300 border-emerald-700/50'
+                                        }`}
+                                        title={`${(use.units || 0) > 1 ? `${use.units}× ` : ''}${use.cardName} (${use.owner})`}>
+                                        {(use.units || 0) > 1 ? `${use.units}× ` : ''}{use.cardName}
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="flex-shrink-0 ml-2 text-right">
+                            <span className={`font-bold text-sm sm:text-base ${textColor}`}>{formatScore(floor.score)}</span>
+                        </div>
                     </div>
-
-                    {/* Floor Info */}
-                    <div className="flex-grow min-w-0">
-                      <div className="flex items-center">
-                        {icon}
-                        <span className={`ml-1 font-semibold ${textColor} truncate`}>
-                          Floor {floor.floor}
-                          <span className="text-slate-500 ml-2 text-xs">
-                            ({Math.round(floor.sqft).toLocaleString()} sq.ft.)
-                          </span>
-                        </span>
-                      </div>
-
-                      {/* Uses */}
-                      <div className="mt-1 flex flex-wrap gap-1 text-xs">
-                        {floor.uses.map((use, idx) => ( // Use 'uses' from memoized floorSummary item
-                          <span
-                            key={`use-${floor.floor}-${idx}`}
-                            className={`px-1.5 py-0.5 rounded truncate max-w-[150px] ${
-                              use.owner === 'developer'
-                                ? 'bg-amber-950/50 text-amber-400 border border-amber-800/50'
-                                : 'bg-emerald-950/50 text-emerald-400 border border-emerald-800/50'
-                            }`}
-                            title={`${(use.units || 0) > 1 ? `${use.units}× ` : ''}${use.cardName}`}
-                          >
-                            {(use.units || 0) > 1 ? `${use.units}× ` : ''}{use.cardName}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Score */}
-                    <div className="flex-shrink-0 ml-2">
-                      <span className={`font-bold ${textColor}`}>
-                        {formatScore(floor.score)}
-                      </span>
-                    </div>
-                  </div>
                 )}
               </motion.div>
             );
           })}
         </AnimatePresence>
       </div>
-
-      {/* Legend */}
-      <div className="mt-3 bg-slate-800/70 p-2 rounded-md border border-slate-700 flex justify-around text-xs">
-        <div className="flex items-center">
-          <div className="w-3 h-3 bg-amber-500/70 rounded mr-1"></div>
-          <span className="text-amber-400">Developer</span>
-        </div>
-        <div className="flex items-center">
-          <div className="w-3 h-3 bg-emerald-500/70 rounded mr-1"></div>
-          <span className="text-emerald-400">Community</span>
-        </div>
-        <div className="flex items-center">
-          <div className="w-3 h-3 bg-slate-600 rounded mr-1"></div>
-          <span className="text-slate-400">Neutral</span>
-        </div>
+      <div className="mt-3 bg-slate-700/50 p-2 rounded-md border border-slate-600 flex justify-around text-xs">
+        {/* ... (Legend as before) ... */}
+        <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 bg-amber-500/70 rounded-sm border border-amber-700/50"></div><span className="text-amber-300">Developer</span></div>
+        <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 bg-emerald-500/70 rounded-sm border border-emerald-700/50"></div><span className="text-emerald-300">Community</span></div>
+        <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 bg-slate-500/70 rounded-sm border border-slate-600/50"></div><span className="text-slate-300">Neutral</span></div>
       </div>
     </div>
   );
 };
 
 export default TowerVisualization;
-

@@ -1,99 +1,136 @@
+// src/components/game/RenderCard.tsx
+// F.3: Refactored for count-based selection and display.
+
 'use client';
+import React, { useMemo, useCallback } from 'react';
+import { CardData, PhaseInfo, CardInstance } from '@/data/types'; // CardInstance used for card prop
+import { useDraggable } from '@dnd-kit/core';
+import { CSS } from '@dnd-kit/utilities';
+import { MAX_STORIES } from '@/data/constants'; // For restriction tooltip
+import CardComponent from "../ui/Card"; 
+import { useFloorStore } from '@/stores/useFloorStore';
+import { logDebug } from '@/utils/logger';
 
-import React from 'react';
-import { CardData, PhaseInfo } from '@/data/types';
-import Card from "@/components/ui/card"; // Import your Card UI component
-import { useDraggable } from '@dnd-kit/core'; // Import for drag capabilities
-
-// Define the props interface for the RenderCard component
-interface RenderCardProps {
-  card: CardData;
-  isProposal: boolean; // Is this card being displayed as a proposal?
-  phaseInfo: PhaseInfo; // Current negotiation phase details
-  selectedHandCardId?: string; // ID of the card selected from hand (for initial proposal)
-  selectedCounterCardId?: string; // ID of the card selected from hand (for counter proposal)
-  isAiTurn: boolean; // Is it currently the AI's turn?
-  onCardClick: (cardId: string) => void; // Callback function when an interactive card is clicked
+export interface RenderCardProps {
+    card: CardInstance; // Represents a stack in hand, or a single card if played
+    isProposal: boolean; 
+    phaseInfo: PhaseInfo;
+    // REMOVED for F.3: selectedProposalInstanceIds: string[];
+    // REMOVED for F.3: selectedCounterProposalInstanceIds: string[];
+    displayCount?: number; // F.3: The count to display for this card if being proposed/countered
+    isAiTurn: boolean;
+    onCardClick: (instanceId: string, event: React.MouseEvent) => void; 
+    currentFloor: number;
 }
 
-/**
- * RenderCard component handles the display and interaction logic for a single card
- * in the NegotiationPanel. This includes selection state, drag-and-drop, and visual styling.
- */
 const RenderCard: React.FC<RenderCardProps> = React.memo(({
-  card,
-  isProposal,
-  phaseInfo,
-  selectedHandCardId,
-  selectedCounterCardId,
-  isAiTurn,
-  onCardClick
+    card,
+    isProposal,
+    phaseInfo,
+    displayCount, // F.3: New prop
+    isAiTurn,
+    onCardClick,
+    currentFloor
 }) => {
-  // Determine if this card is currently selected
-  const isSelected = phaseInfo.isInitialProposalPhase
-    ? selectedHandCardId === card.id
-    : phaseInfo.isResponsePhase
-      ? selectedCounterCardId === card.id
-      : false;
+    const canPlayCardOnThisFloorSelector = useFloorStore(state => state.canPlayOnFloor);
 
-  // Determine if the card should be interactive (clickable/draggable)
-  // Only hand cards (not proposals) during the player's turn in the correct phase are interactive
-  const isInteractive = !isProposal && !isAiTurn &&
-    (phaseInfo.isInitialProposalPhase || phaseInfo.isResponsePhase);
-
-  // Set up draggable functionality
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: card.id,
-    data: { card },
-    disabled: !isInteractive // Only allow dragging if the card is interactive
-  });
-
-  // Format the impact score for display
-  const impactValue = card.netScoreImpact ?? 0;
-  const formattedImpact = impactValue > 0
-    ? `+${impactValue}`
-    : impactValue.toString();
-
-  // Handle the click event, only calling the passed handler if interactive
-  const handleClick = () => {
-    if (isInteractive) {
-      onCardClick(card.id);
+    if (!card || !card.instanceId) {
+        logDebug("RenderCard received invalid card data", { card });
+        return <div className="p-2 border border-dashed border-red-500 text-red-500 text-xs">Invalid Card Data</div>;
     }
-  };
 
-  // Determine card style based on state
-  const cardStyle = {
-    transform: isDragging ? 'scale(1.05)' : 'scale(1)',
-    opacity: isDragging ? 0.8 : 1,
-    cursor: isInteractive ? 'pointer' : 'default'
-  };
+    // F.3: Card is "selected" for highlighting if its displayCount is > 0 (and it's not a proposal display)
+    const isSelected = useMemo(() => {
+        if (isProposal) return false; // Cards in proposal area aren't "selected" in this context
+        return !!(displayCount && displayCount > 0);
+    }, [isProposal, displayCount]);
 
-  return (
-    <div 
-      ref={setNodeRef}
-      {...(isInteractive ? { ...attributes, ...listeners } : {})}
-      className={`flex-shrink-0 transition-all duration-150 ${isSelected ? 'ring-2 ring-offset-2 ring-blue-500' : ''}`}
-      style={cardStyle}
-      onClick={handleClick}
-    >
-      <Card
-        card={card}
-        isSelected={isSelected}
-        isPlayable={isInteractive} // Visually indicate if playable
-        isDraggable={isInteractive}
-      />
-      
-      {/* Optional debug info for development */}
-      {process.env.NODE_ENV === 'development' && (
-        <div className="text-xs text-slate-500 mt-1 text-center">
-          ID: {card.id.substring(0, 6)}... | Impact: {formattedImpact}
+    const isAllowedOnCurrentFloor = useMemo(() => {
+        if (isProposal) return true; 
+        return canPlayCardOnThisFloorSelector(card, currentFloor);
+    }, [isProposal, canPlayCardOnThisFloorSelector, card, currentFloor]);
+
+    const isInteractive = !isProposal && !isAiTurn && isAllowedOnCurrentFloor &&
+        (phaseInfo.isInitialProposalPhase || phaseInfo.isResponsePhase);
+
+    const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+        id: card.instanceId, // instanceId of the hand stack
+        data: { cardData: card, isHandCard: !isProposal },
+        disabled: !isInteractive 
+    });
+
+    const style = useMemo(() => ({
+        opacity: isDragging ? 0.75 : (isInteractive ? 1 : 0.65),
+        transform: CSS.Transform.toString(transform),
+        transition: isDragging ? 'none' : 'transform 0.1s ease-out, box-shadow 0.1s ease-out, opacity 0.1s ease-out',
+        cursor: isInteractive ? (isDragging ? 'grabbing' : 'grab') : 'not-allowed',
+        zIndex: isDragging ? 100 : (isSelected ? 10 : 1), // isSelected now based on displayCount
+        position: 'relative', 
+    }), [transform, isDragging, isInteractive, isSelected]);
+
+    const handleWrapperClick = useCallback((event: React.MouseEvent) => {
+        if (isInteractive) {
+            onCardClick(card.instanceId, event); // instanceId of the hand stack
+        } else {
+            logDebug(`RenderCard wrapper click ignored (not interactive): ${card.name} (Stack ID: ${card.instanceId})`, 'RenderCard');
+        }
+    }, [isInteractive, onCardClick, card.instanceId, card.name]);
+
+    const restrictionTooltip = useMemo(() => { /* ... (as before) ... */ 
+        if (isProposal || isAllowedOnCurrentFloor) return undefined;
+        if (!card.requiresFloor || card.requiresFloor.length === 0) return `Not playable: Unknown reason. Current floor: ${currentFloor}.`;
+        
+        const floorsList = card.requiresFloor.map(f => {
+            if (typeof f === 'string') {
+                if (f.toLowerCase() === 'ground') return 'Ground Floor (1)';
+                if (f.toLowerCase() === 'roof') return `Roof (${MAX_STORIES})`;
+                return f.charAt(0).toUpperCase() + f.slice(1);
+            }
+            return `Floor ${f}`;
+        }).join(' or ');
+        return `Playable only on: ${floorsList}. Current: ${currentFloor}.`;
+    }, [card.requiresFloor, isAllowedOnCurrentFloor, isProposal, currentFloor]);
+
+    const visualFloorRestricted = !isAllowedOnCurrentFloor && !isProposal;
+
+    const cardTitle = isInteractive 
+        ? `${card.name}${card.stack && card.stack > 1 && !isProposal ? ` (Stack: ${card.stack})` : ''}${displayCount && displayCount > 0 ? ` [Proposing: ${displayCount}]` : ''} - Click to cycle count` 
+        : (restrictionTooltip || `${card.name}${isProposal ? '' : (card.stack && card.stack > 1 ? ` (Stack: ${card.stack})` : '')}`);
+
+
+    return (
+        <div
+            ref={setNodeRef}
+            style={style as React.CSSProperties}
+            {...listeners} 
+            {...attributes} 
+            className={`transition-opacity duration-150 ease-in-out group ${
+                isSelected && !isProposal ? 'ring-2 ring-offset-2 ring-sky-500 ring-offset-slate-800 rounded-lg shadow-xl' : ''
+            }`} // isSelected now based on displayCount
+            title={cardTitle}
+            onClick={handleWrapperClick} 
+        >
+            <CardComponent 
+                card={card} // Pass the CardInstance (stack)
+                isSelected={isSelected && !isProposal} // Visual selection based on displayCount
+                isPlayable={isInteractive} 
+                isPlayed={isProposal}
+                floorRestricted={visualFloorRestricted}
+                displayCount={isProposal ? undefined : displayCount} // F.3: Pass displayCount to ui/Card, not for proposal displays
+            />
+            {/* Stack count for card in hand */}
+            {!isProposal && card.stack && card.stack > 1 && (
+                <span
+                    className="absolute -top-1.5 -right-1.5 bg-slate-700 text-white text-[0.65rem] font-semibold px-1.5 py-0.5 rounded-full shadow-md pointer-events-none"
+                    aria-label={`Stack of ${card.stack}`}
+                >
+                    x{card.stack}
+                </span>
+            )}
+             {/* F.3: Display proposal count badge if not a proposal display and count > 0 - this is now responsibility of ui/Card */}
         </div>
-      )}
-    </div>
-  );
+    );
 });
 
-// Set display name for better debugging
 RenderCard.displayName = 'RenderCard';
-
 export default RenderCard;

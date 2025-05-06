@@ -1,441 +1,249 @@
-"use client";
-import { useState, useMemo } from 'react';
-import { useFloorStore, FloorStatus } from '@/stores/useFloorStore';
+// src/components/FloorTimeline.tsx
+// Refactored for E.2: Improved Recall UX - More direct recall action from the tile.
+
+'use client';
+import React, { useState, useMemo, useCallback } from 'react';
+import { useFloorStore } from '@/stores/useFloorStore';
 import { useGameFlowStore } from '@/stores/useGameFlowStore';
 import { usePlayersStore } from '@/stores/usePlayersStore';
+import { FloorState, FloorStatus, Committer } from '@/data/types';
 import { Button } from "@/components/ui/button";
-import { 
-  Layers, 
-  RefreshCcw, 
-  Check, 
-  Clock, 
-  AlertTriangle, 
-  ChevronRight, 
-  ChevronLeft,
-  ArrowUp,
-  X,
-  Info
-} from 'lucide-react';
+import { Layers, RefreshCcw, Check, Clock, AlertTriangle, Info, X as IconX, ArrowUp, Ban, HelpCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { RECALL_MAX_FLOOR } from '@/data/constants';
+import { RECALL_MAX_FLOOR, MAX_STORIES } from '@/data/constants';
+import { logDebug } from '@/utils/logger';
 
 const FloorTimeline = () => {
-  // State from stores
-  const floors = useFloorStore(state => state.floors);
-  const currentFloor = useFloorStore(state => state.currentFloor);
-  const useRecallToken = useGameFlowStore(state => state.useRecallToken);
-  const players = usePlayersStore(state => state.players);
-  const currentPlayerIndex = usePlayersStore(state => state.currentPlayerIndex);
-  
-  // Local state
-  const [hoveredFloor, setHoveredFloor] = useState<number | null>(null);
-  const [activeTooltip, setActiveTooltip] = useState<number | null>(null);
-  const [viewMode, setViewMode] = useState<'compact' | 'normal' | 'expanded'>('normal');
-  const [tooltipPosition, setTooltipPosition] = useState<'top' | 'bottom'>('top');
-  
-  // Derived state
-  const currentPlayer = useMemo(() => 
-    players[currentPlayerIndex], 
-  [players, currentPlayerIndex]);
-  
-  const hasRecallTokens = useMemo(() => 
-    (currentPlayer?.recallTokens || 0) > 0,
-  [currentPlayer?.recallTokens]);
-  
-  // Calculate visible floors based on view mode and current floor
-  const visibleFloors = useMemo(() => {
-    // All floors available in the game
-    const allFloors = floors.slice(0, 25);
+    const floors = useFloorStore(state => state.floors);
+    const currentFloorNum = useFloorStore(state => state.currentFloor);
+    const validateRecallSelector = useFloorStore(state => state.validateRecall);
     
-    // Show all floors in expanded mode
-    if (viewMode === 'expanded') {
-      return allFloors;
-    }
+    const useRecallTokenAction = useGameFlowStore(state => state.useRecallToken);
+    const isAiTurn = useGameFlowStore(state => state.isAiTurn);
     
-    // Only show current and adjacent floors in compact mode
-    if (viewMode === 'compact') {
-      const startFloor = Math.max(1, currentFloor - 1);
-      const endFloor = Math.min(25, currentFloor + 1);
-      return allFloors.filter(f => 
-        f.floorNumber >= startFloor && f.floorNumber <= endFloor
-      );
-    }
-    
-    // Normal mode: show a range around current floor
-    const startFloor = Math.max(1, currentFloor - 2);
-    const endFloor = Math.min(25, currentFloor + 4);
-    return allFloors.filter(f => 
-      f.floorNumber >= startFloor && f.floorNumber <= endFloor
-    );
-  }, [floors, currentFloor, viewMode]);
-  
-  // Toggle tooltip position based on floor position
-  const getTooltipPosition = (floorNumber: number) => {
-    return floorNumber >= 15 ? 'bottom' : 'top';
-  };
-  
-  // Get appropriate styling classes based on floor status
-  interface FloorClassesProps {
-    floor: Floor;
-  }
+    const players = usePlayersStore(state => state.players);
+    const currentPlayerIndex = usePlayersStore(state => state.currentPlayerIndex);
 
-  const getFloorClasses = ({ floor }: FloorClassesProps): string => {
-    const baseClasses = "flex items-center justify-center rounded-md border shadow-md transition-all duration-200";
-    
-    // Size classes based on view mode
-    const sizeClasses = viewMode === 'compact' 
-      ? "w-8 h-8 text-xs" 
-      : "w-10 h-10 text-sm";
-    
-    // Color classes based on status
-    let statusClasses = "";
-    if (floor.status === FloorStatus.Agreed) {
-      statusClasses = "bg-emerald-600 border-emerald-400 text-white";
-    } else if (floor.status === FloorStatus.Reopened) {
-      statusClasses = "bg-yellow-600 border-yellow-400 text-white";
-    } else if (floor.floorNumber === currentFloor) {
-      statusClasses = "bg-blue-600 border-blue-400 text-white animate-pulse";
-    } else {
-      statusClasses = "bg-slate-700 border-slate-500 text-slate-300";
-    }
-    
-    // Hover and active classes
-    const interactionClasses = `
-      ${hoveredFloor === floor.floorNumber ? 'ring-2 ring-white' : ''}
-      ${activeTooltip === floor.floorNumber ? 'ring-2 ring-white scale-110' : ''}
-      hover:scale-105 hover:shadow-lg
-    `;
-    
-    return `${baseClasses} ${sizeClasses} ${statusClasses} ${interactionClasses}`;
-  };
-  
-  // Get tooltip content for a floor
-  interface Floor {
-    floorNumber: number;
-    status: FloorStatus;
-    winnerCard?: WinnerCard;
-    committedBy?: string;
-    proposalA?: Proposal;
-    proposalB?: Proposal;
-  }
+    const [hoveredFloor, setHoveredFloor] = useState<number | null>(null);
+    const [activeTooltip, setActiveTooltip] = useState<number | null>(null);
 
-  interface WinnerCard {
-    name: string;
-    netScoreImpact: number;
-  }
+    const currentPlayer = useMemo(() => players[currentPlayerIndex], [players, currentPlayerIndex]);
+    const hasRecallTokens = useMemo(() => (currentPlayer?.recallTokens || 0) > 0, [currentPlayer?.recallTokens]);
 
-  interface Proposal {
-    name: string;
-  }
+    const visibleFloors = useMemo(() => {
+        const range = 3;
+        const visibleSet = new Set<number>([1]);
+        for (let i = Math.max(1, currentFloorNum - range); i <= Math.min(MAX_STORIES, currentFloorNum + range); i++) {
+            visibleSet.add(i);
+        }
+        if (MAX_STORIES > 0) visibleSet.add(MAX_STORIES);
+        return floors.filter(f => visibleSet.has(f.floorNumber)).sort((a, b) => a.floorNumber - b.floorNumber);
+    }, [floors, currentFloorNum]);
 
-  const getTooltipContent = (floor: Floor) => {
-    // For completed floors
-    if (floor.status === FloorStatus.Agreed && floor.winnerCard) {
-      return (
-        <div className="w-64 p-3">
-          <div className="flex justify-between items-start mb-2">
-            <div className="flex items-center">
-              <Check size={16} className="text-emerald-400 mr-2" />
-              <h3 className="font-bold text-white text-sm">Floor {floor.floorNumber}</h3>
-            </div>
-            <button 
-              className="text-slate-400 hover:text-white"
-              onClick={() => setActiveTooltip(null)}
-            >
-              <X size={14} />
-            </button>
-          </div>
-          
-          <div className="bg-slate-700/70 p-2 rounded mb-2">
-            <p className="font-semibold text-emerald-300 text-sm">{floor.winnerCard.name}</p>
-            <div className="flex justify-between text-xs mt-1">
-              <span>Impact: <span className={floor.winnerCard.netScoreImpact > 0 ? 'text-amber-400' : 'text-emerald-400'}>
-                {floor.winnerCard.netScoreImpact > 0 ? '+' : ''}{floor.winnerCard.netScoreImpact}
-              </span></span>
-              <span>Committed by: {
-                floor.committedBy === 'A' ? 'Player A' : 
-                floor.committedBy === 'B' ? 'Player B' : 
-                'AI Mediator'
-              }</span>
-            </div>
-          </div>
-          
-          {hasRecallTokens && floor.floorNumber < currentFloor && floor.floorNumber < RECALL_MAX_FLOOR && (
-            <Button 
-              variant="destructive"
-              size="sm"
-              className="w-full bg-red-800 hover:bg-red-700 text-xs h-7"
-              onClick={(e) => {
-                e.stopPropagation();
-                useRecallToken(floor.floorNumber);
-                setActiveTooltip(null);
-              }}
-            >
-              <RefreshCcw className="mr-1 h-3 w-3" /> Use Recall Token
-            </Button>
-          )}
-        </div>
-      );
-    }
-    
-    // For current floor
-    if (floor.floorNumber === currentFloor) {
-      return (
-        <div className="w-56 p-3">
-          <div className="flex justify-between items-start mb-2">
-            <div className="flex items-center">
-              <Clock size={16} className="text-blue-400 mr-2" />
-              <h3 className="font-bold text-white text-sm">Current Floor</h3>
-            </div>
-            <button 
-              className="text-slate-400 hover:text-white"
-              onClick={() => setActiveTooltip(null)}
-            >
-              <X size={14} />
-            </button>
-          </div>
-          
-          <div className="text-xs text-slate-300">
-            <p>Currently in negotiation</p>
-            {floor.proposalA && (
-              <div className="mt-2 p-1.5 bg-slate-700/70 rounded">
-                <p className="font-medium">Lead proposal: <span className="text-blue-400">{floor.proposalA.name}</span></p>
-              </div>
-            )}
-            {floor.proposalB && (
-              <div className="mt-1 p-1.5 bg-slate-700/70 rounded">
-                <p className="font-medium">Counter proposal: <span className="text-purple-400">{floor.proposalB.name}</span></p>
-              </div>
-            )}
-          </div>
-        </div>
-      );
-    }
-    
-    // For reopened floors
-    if (floor.status === FloorStatus.Reopened) {
-      return (
-        <div className="w-56 p-3">
-          <div className="flex justify-between items-start mb-2">
-            <div className="flex items-center">
-              <RefreshCcw size={16} className="text-yellow-400 mr-2" />
-              <h3 className="font-bold text-white text-sm">Reopened Floor</h3>
-            </div>
-            <button 
-              className="text-slate-400 hover:text-white"
-              onClick={() => setActiveTooltip(null)}
-            >
-              <X size={14} />
-            </button>
-          </div>
-          
-          <div className="text-xs text-slate-300">
-            <p>This floor is being renegotiated</p>
-            <p className="mt-1 italic text-yellow-300">A recall token was used to reopen this floor</p>
-          </div>
-        </div>
-      );
-    }
-    
-    // For future floors
-    return (
-      <div className="w-48 p-3">
-        <div className="flex justify-between items-start mb-2">
-          <div className="flex items-center">
-            <Info size={16} className="text-slate-400 mr-2" />
-            <h3 className="font-bold text-white text-sm">Floor {floor.floorNumber}</h3>
-          </div>
-          <button 
-            className="text-slate-400 hover:text-white"
-            onClick={() => setActiveTooltip(null)}
-          >
-            <X size={14} />
-          </button>
-        </div>
+    const handleTileClick = useCallback((floorNumber: number) => {
+        setActiveTooltip(prev => (prev === floorNumber ? null : floorNumber));
+    }, []);
+
+    const handleRecallIconClick = useCallback((e: React.MouseEvent, floorNumber: number) => {
+        e.stopPropagation(); // Prevent tile click from also firing
+        const validation = validateRecallSelector(floorNumber);
+        if (!isAiTurn && hasRecallTokens && validation.isValid) {
+            logDebug(`Recall icon clicked for floor ${floorNumber}. Validation: ${validation.reason}`, 'FloorTimeline');
+            useRecallTokenAction(floorNumber);
+            setActiveTooltip(null); // Close tooltip if open
+        } else {
+            logDebug(`Recall icon condition not met for floor ${floorNumber}. Reason: ${validation.reason}`, 'FloorTimeline');
+            // Optionally, briefly show the tooltip with the reason if the icon was clicked when disabled
+            if (!validation.isValid) {
+                 setActiveTooltip(floorNumber);
+            }
+        }
+    }, [isAiTurn, hasRecallTokens, validateRecallSelector, useRecallTokenAction]);
+
+    const getFloorClasses = useCallback((floor: FloorState): string => {
+        const base = "relative flex items-center justify-center rounded-md border shadow-sm transition-all duration-200 w-10 h-10 text-sm font-medium";
+        let statusClasses = "";
+        if (floor.status === FloorStatus.Agreed) statusClasses = "bg-emerald-700/80 border-emerald-500 text-white hover:bg-emerald-600";
+        else if (floor.status === FloorStatus.Reopened) statusClasses = "bg-yellow-600/80 border-yellow-400 text-white hover:bg-yellow-500 animate-pulse";
+        else if (floor.status === FloorStatus.Skipped) statusClasses = "bg-slate-600/70 border-slate-500 text-slate-400 hover:bg-slate-500";
+        else if (floor.floorNumber === currentFloorNum) statusClasses = "bg-blue-600 border-blue-400 text-white hover:bg-blue-500 ring-2 ring-offset-2 ring-blue-400 ring-offset-slate-800";
+        else statusClasses = "bg-slate-700/80 border-slate-600 text-slate-300 hover:bg-slate-600";
         
-        <div className="text-xs text-slate-300">
-          <p>Not yet built</p>
-          {floor.floorNumber > currentFloor && (
-            <p className="mt-1 italic">Will be negotiated after current floor</p>
-          )}
+        const interaction = `${hoveredFloor === floor.floorNumber ? 'scale-105 shadow-lg' : ''} ${activeTooltip === floor.floorNumber ? 'scale-110 ring-2 ring-white ring-offset-1 ring-offset-slate-800' : ''}`;
+        return `${base} ${statusClasses} ${interaction}`;
+    }, [currentFloorNum, hoveredFloor, activeTooltip]);
+
+    const getTooltipContent = useCallback((floor: FloorState): React.ReactNode => {
+        const commonHeader = (title: string, titleColor: string, icon: React.ReactNode) => (
+            <div className="flex justify-between items-center mb-2">
+                <h3 className={`font-bold text-sm ${titleColor} flex items-center`}>{icon}{title}</h3>
+                <button className="text-slate-400 hover:text-white p-0.5" onClick={() => setActiveTooltip(null)}><IconX size={14} /></button>
+            </div>
+        );
+
+        if (floor.status === FloorStatus.Agreed && floor.winnerCard) {
+            const recallValidation = validateRecallSelector(floor.floorNumber);
+            const canPlayerInitiateRecall = !isAiTurn && hasRecallTokens;
+            const isRecallPossible = canPlayerInitiateRecall && recallValidation.isValid;
+            
+            let recallInfoText = "";
+            if (isRecallPossible) {
+                recallInfoText = `Recall available (${currentPlayer?.recallTokens} token${currentPlayer?.recallTokens === 1 ? '' : 's'} left).`;
+            } else {
+                if (!canPlayerInitiateRecall) recallInfoText = isAiTurn ? "Recall not available for AI." : "No recall tokens left.";
+                else recallInfoText = `Recall not possible: ${recallValidation.reason}`;
+            }
+
+            const impact = floor.winnerCard.netScoreImpact ?? 0;
+            const committerDisplay = floor.committedBy === Committer.PlayerA ? 'Player A' : floor.committedBy === Committer.PlayerB ? 'Player B' : floor.committedBy === Committer.Auto ? 'Mediator' : 'Unknown';
+            
+            return (
+                <div className="w-60 p-3 text-xs">
+                    {commonHeader(`Floor ${floor.floorNumber} Agreed`, "text-emerald-300", <Check size={14} className="mr-1.5" />)}
+                    <div className="bg-slate-700/70 p-2 rounded mb-2 space-y-1">
+                        <p className="font-semibold text-white">{floor.winnerCard.name}</p>
+                        <div className="flex justify-between text-slate-300">
+                            <span>Impact: <span className={impact >= 0 ? 'text-amber-400' : 'text-emerald-400'}>{impact >= 0 ? '+' : ''}{impact}</span></span>
+                            <span>By: {committerDisplay}</span>
+                        </div>
+                    </div>
+                    <p className={`text-xs ${isRecallPossible ? 'text-sky-300' : 'text-slate-400'} italic mt-1`}>
+                        {recallInfoText}
+                    </p>
+                </div>
+            );
+        }
+        if (floor.status === FloorStatus.Skipped) { /* ... (same as before) ... */ 
+            return (
+                <div className="w-52 p-3 text-xs">
+                    {commonHeader(`Floor ${floor.floorNumber} Skipped`, "text-slate-400", <Ban size={14} className="mr-1.5" />)}
+                    <p className="text-slate-300 italic">No card was placed on this floor.</p>
+                </div>
+            );
+        }
+        if (floor.floorNumber === currentFloorNum) { /* ... (same as before) ... */ 
+            const proposalACard = floor.proposalA?.[0];
+            const proposalBCard = floor.proposalB?.[0];
+            return (
+                <div className="w-56 p-3 text-xs">
+                    {commonHeader(`Floor ${floor.floorNumber} Current`, "text-blue-300", <Clock size={14} className="mr-1.5" />)}
+                    <p className="text-slate-300 mb-1">In negotiation...</p>
+                    {proposalACard && (<div className="mt-1 p-1.5 bg-slate-700/70 rounded">
+                        <p className="font-medium text-xs">Lead: <span className="text-blue-400">{proposalACard.name}</span></p>
+                        {floor.proposalA!.length > 1 && <p className='text-[0.65rem] italic text-slate-400'> + {floor.proposalA!.length - 1} more</p>}
+                    </div>)}
+                    {proposalBCard && (<div className="mt-1 p-1.5 bg-slate-700/70 rounded">
+                        <p className="font-medium text-xs">Counter: <span className="text-purple-400">{proposalBCard.name}</span></p>
+                        {floor.proposalB!.length > 1 && <p className='text-[0.65rem] italic text-slate-400'> + {floor.proposalB!.length - 1} more</p>}
+                    </div>)}
+                    {!proposalACard && !proposalBCard && <p className="italic text-slate-400">No proposals yet.</p>}
+                </div>
+            );
+        }
+        if (floor.status === FloorStatus.Reopened) { /* ... (same as before) ... */ 
+            return (
+                <div className="w-56 p-3 text-xs">
+                     {commonHeader(`Floor ${floor.floorNumber} Reopened`, "text-yellow-300", <RefreshCcw size={14} className="mr-1.5" />)}
+                    <p className="text-slate-300 italic">This floor was reopened and is pending negotiation.</p>
+                </div>
+            );
+        }
+        // Pending Floor or other unhandled status
+        return (
+            <div className="w-48 p-3 text-xs">
+                {commonHeader(`Floor ${floor.floorNumber} Pending`, "text-slate-400", <Layers size={14} className="mr-1.5" />)}
+                <p className="text-slate-300 italic">Not yet built.</p>
+            </div>
+        );
+    }, [isAiTurn, hasRecallTokens, currentFloorNum, currentPlayer?.recallTokens, validateRecallSelector]);
+
+    return (
+        <div className="p-3 bg-slate-800/70 rounded-lg border border-slate-700 h-full flex flex-col">
+            <div className="flex items-center justify-between mb-3">
+                <h2 className="text-base font-semibold text-slate-300 flex items-center"><Layers className="mr-2 h-5 w-5 text-slate-400" />Floor Timeline</h2>
+                <div className="text-xs text-slate-400 bg-slate-700 px-2 py-0.5 rounded-full">Recall Tokens: <span className="font-bold text-white">{currentPlayer?.recallTokens ?? 0}</span></div>
+            </div>
+            <div className="overflow-x-auto overflow-y-hidden pb-2 -mb-2 flex-grow min-h-0">
+                <div className="flex gap-2 items-center h-full pb-1">
+                    {visibleFloors.map((floor) => {
+                        const recallValidation = floor.status === FloorStatus.Agreed ? validateRecallSelector(floor.floorNumber) : { isValid: false, reason: "Not an agreed floor." };
+                        const canPlayerInitiateRecall = !isAiTurn && hasRecallTokens;
+                        const showRecallIcon = floor.status === FloorStatus.Agreed && hoveredFloor === floor.floorNumber && canPlayerInitiateRecall && recallValidation.isValid;
+                        const recallIconTitle = canPlayerInitiateRecall && recallValidation.isValid ? `Recall Floor ${floor.floorNumber} (${currentPlayer?.recallTokens} left)` : recallValidation.reason;
+
+                        return (
+                            <div 
+                                key={`floor-${floor.floorNumber}`} 
+                                className="relative flex-shrink-0" 
+                                onMouseEnter={() => setHoveredFloor(floor.floorNumber)} 
+                                onMouseLeave={() => setHoveredFloor(null)}
+                            >
+                                <button 
+                                    className={getFloorClasses(floor)} 
+                                    onClick={() => handleTileClick(floor.floorNumber)} 
+                                    title={`Floor ${floor.floorNumber} (${floor.status}) - Click for details`}
+                                >
+                                    {floor.floorNumber}
+                                    {floor.floorNumber === currentFloorNum && <div className="absolute -top-1.5 left-1/2 -translate-x-1/2"><ArrowUp size={12} className="text-white drop-shadow-md" /></div>}
+                                   
+                                    {/* Recall Icon directly on tile */}
+                                    {showRecallIcon && (
+                                        <Button
+                                            variant="destructive"
+                                            size="icon"
+                                            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-7 h-7 bg-red-600 hover:bg-red-500 opacity-90 hover:opacity-100 z-10 shadow-lg"
+                                            onClick={(e) => handleRecallIconClick(e, floor.floorNumber)}
+                                            title={recallIconTitle}
+                                        >
+                                            <RefreshCcw size={14} />
+                                        </Button>
+                                    )}
+                                    {/* Visual cue if recallable but not hovered (optional) */}
+                                    {floor.status === FloorStatus.Agreed && canPlayerInitiateRecall && recallValidation.isValid && hoveredFloor !== floor.floorNumber && (
+                                        <div className="absolute top-0.5 right-0.5 w-2 h-2 bg-sky-400 rounded-full opacity-70" title="Recall available"></div>
+                                    )}
+                                </button>
+                                <AnimatePresence>
+                                    {activeTooltip === floor.floorNumber && (
+                                        <motion.div 
+                                            initial={{ opacity: 0, y: 10 }} 
+                                            animate={{ opacity: 1, y: 0 }} 
+                                            exit={{ opacity: 0, y: 10 }} 
+                                            transition={{ duration: 0.2 }} 
+                                            className="absolute z-50 bottom-full mb-2 left-1/2 -translate-x-1/2" 
+                                            style={{ minWidth: '12rem' }}
+                                        >
+                                            <div className="bg-slate-800 border border-slate-600 rounded-md shadow-xl">
+                                                {getTooltipContent(floor)}
+                                            </div>
+                                            <div className="absolute left-1/2 -translate-x-1/2 bottom-0 translate-y-1/2 w-3 h-3 bg-slate-800 border-b border-r border-slate-600 transform rotate-45"></div>
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
+                            </div>
+                        );
+                    })}
+                    {visibleFloors.length < floors.length && floors.length > 0 && <div className="text-slate-500 text-xs ml-2">...</div>}
+                </div>
+            </div>
+            <div className="mt-auto pt-2 border-t border-slate-700/50">
+                { /* Legend (same as before) */ }
+                <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 text-xs text-slate-400 mb-2">
+                    <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 bg-emerald-700 rounded-sm border border-emerald-500"></div>Agreed</div>
+                    <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 bg-yellow-600 rounded-sm border border-yellow-400"></div>Reopened</div>
+                    <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 bg-blue-600 rounded-sm border border-blue-400"></div>Current</div>
+                    <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 bg-slate-600 rounded-sm border border-slate-500"></div>Skipped</div>
+                    <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 bg-slate-700 rounded-sm border border-slate-600"></div>Pending</div>
+                </div>
+                {currentFloorNum >= RECALL_MAX_FLOOR && hasRecallTokens && (
+                    <div className="flex items-center justify-center text-[0.7rem] text-amber-400/80 mt-1">
+                        <AlertTriangle size={11} className="mr-1 flex-shrink-0" />
+                        <span>Recall only usable up to Floor {RECALL_MAX_FLOOR - 1}</span>
+                    </div>
+                )}
+            </div>
         </div>
-      </div>
     );
-  };
-  
-  // Cycle through view modes
-  const cycleViewMode = () => {
-    if (viewMode === 'compact') setViewMode('normal');
-    else if (viewMode === 'normal') setViewMode('expanded');
-    else setViewMode('compact');
-  };
-  
-  return (
-    <div className="p-4 bg-slate-800/90 backdrop-blur-sm rounded-lg border border-slate-700 h-full">
-      {/* Header with title and controls */}
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="text-lg font-bold text-slate-300 flex items-center">
-          <Layers className="mr-2 h-5 w-5 text-slate-400" />
-          Floor Timeline
-        </h2>
-        <div className="flex items-center gap-2">
-          {/* Recall tokens badge */}
-          <div className="text-xs text-slate-400 bg-slate-700 px-2 py-1 rounded-full">
-            Recall: <span className="font-bold">{currentPlayer?.recallTokens || 0}/2</span>
-          </div>
-          
-          {/* View mode toggle */}
-          <Button 
-            variant="outline" 
-            size="sm" 
-            className="h-7 text-xs border-slate-600 text-slate-300"
-            onClick={cycleViewMode}
-          >
-            {viewMode === 'compact' ? 'Normal' : viewMode === 'normal' ? 'Expand' : 'Compact'}
-          </Button>
-        </div>
-      </div>
-      
-      {/* Navigation for expanded view */}
-      {viewMode === 'expanded' && visibleFloors.length > 10 && (
-        <div className="flex justify-between items-center mb-2 text-xs text-slate-400">
-          <span>Floors {visibleFloors[0]?.floorNumber} - {visibleFloors[visibleFloors.length-1]?.floorNumber}</span>
-          <span>Total: {floors.length}</span>
-        </div>
-      )}
-      
-      {/* Scrollable floor tiles */}
-      <div className="overflow-x-auto pb-2 mb-2">
-        <div className="flex gap-2 pr-2 flex-wrap">
-          {visibleFloors.map((floor) => (
-            <div 
-              key={`floor-${floor.floorNumber}`}
-              className="relative"
-              onMouseEnter={() => setHoveredFloor(floor.floorNumber)}
-              onMouseLeave={() => setHoveredFloor(null)}
-            >
-              {/* Floor tile */}
-              <button
-                className={getFloorClasses({ 
-                  floor: { 
-                    ...floor, 
-                    committedBy: floor.committedBy ?? undefined,
-                    winnerCard: floor.winnerCard ? {
-                      ...floor.winnerCard,
-                      netScoreImpact: (floor.winnerCard as any).netScoreImpact ?? 0
-                    } : undefined
-                  } 
-                })}
-                onClick={() => {
-                  // Toggle tooltip on/off when clicked
-                  setActiveTooltip(activeTooltip === floor.floorNumber ? null : floor.floorNumber);
-                  setTooltipPosition(getTooltipPosition(floor.floorNumber));
-                }}
-                title={`Floor ${floor.floorNumber}`}
-              >
-                {floor.floorNumber}
-                
-                {/* Small indicator for floor with cards */}
-                {floor.status === FloorStatus.Agreed && (
-                  <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-white rounded-full border border-slate-700"></div>
-                )}
-                
-                {/* Current floor indicator */}
-                {floor.floorNumber === currentFloor && (
-                  <div className="absolute -top-1 -right-1">
-                    <ArrowUp size={10} className="text-white" />
-                  </div>
-                )}
-              </button>
-              
-              {/* Tooltip */}
-              <AnimatePresence>
-                {activeTooltip === floor.floorNumber && (
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.9 }}
-                    transition={{ duration: 0.2 }}
-                    className={`absolute z-50 ${
-                      tooltipPosition === 'top' ? 'bottom-full mb-2' : 'top-full mt-2'
-                    } left-0`}
-                  >
-                    <div className="bg-slate-800 border border-slate-600 rounded-md shadow-xl">
-                      {getTooltipContent({ 
-                        ...floor, 
-                        committedBy: floor.committedBy ?? undefined,
-                        winnerCard: floor.winnerCard ? {
-                          ...floor.winnerCard,
-                          netScoreImpact: (floor.winnerCard as any).netScoreImpact ?? 0
-                        } : undefined
-                      })}
-                    </div>
-                    <div className="bg-slate-800 border border-slate-600 rounded-md shadow-xl">
-                      {getTooltipContent({ 
-                        ...floor, 
-                        committedBy: floor.committedBy ?? undefined,
-                        winnerCard: floor.winnerCard ? {
-                          ...floor.winnerCard,
-                          netScoreImpact: (floor.winnerCard as any).netScoreImpact ?? 0
-                        } : undefined
-                      })}
-                    </div>
-                    
-                    {/* Tooltip arrow */}
-                    <div 
-                      className={`absolute left-3 w-3 h-3 bg-slate-800 border-slate-600 transform rotate-45 ${
-                        tooltipPosition === 'top' ? 'bottom-0 translate-y-1.5 border-b border-r' : 'top-0 -translate-y-1.5 border-t border-l'
-                      }`}
-                    ></div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-          ))}
-          
-          {/* Indicator for more floors */}
-          {viewMode !== 'expanded' && currentFloor < 22 && (
-            <div className="flex items-center justify-center w-8 h-8 bg-slate-800 text-slate-400 rounded border border-slate-700">
-              <ChevronRight size={14} />
-            </div>
-          )}
-        </div>
-      </div>
-      
-      {/* Legend */}
-      <div className="grid grid-cols-4 gap-2 text-xs text-slate-400 mt-2">
-        <div className="flex items-center gap-1">
-          <div className="w-3 h-3 bg-emerald-600 rounded-sm border border-emerald-400"></div>
-          <span>Agreed</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <div className="w-3 h-3 bg-yellow-600 rounded-sm border border-yellow-400"></div>
-          <span>Reopened</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <div className="w-3 h-3 bg-blue-600 rounded-sm border border-blue-400"></div>
-          <span>Current</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <div className="w-3 h-3 bg-slate-700 rounded-sm border border-slate-500"></div>
-          <span>Pending</span>
-        </div>
-      </div>
-      
-      {/* Recall token warning */}
-      {currentFloor >= RECALL_MAX_FLOOR && hasRecallTokens && (
-        <div className="mt-3 flex items-center text-xs text-amber-400">
-          <AlertTriangle size={12} className="mr-1" />
-          <span>Recall tokens can only be used until floor {RECALL_MAX_FLOOR}</span>
-        </div>
-      )}
-      
-      {/* Help text */}
-      <div className="mt-3 text-xs text-slate-500 text-center">
-        Click on a floor tile to see details and options
-      </div>
-    </div>
-  );
 };
 
 export default FloorTimeline;

@@ -5,7 +5,7 @@ import { usePlayersStore } from '@/stores/usePlayersStore';
 import { useGameFlowStore } from '@/stores/useGameFlowStore';
 import { useFloorStore } from '@/stores/useFloorStore';
 import { useBuildingStore } from '@/stores/useBuildingStore';
-import { PlayerRole, PlayerType } from '@/stores/usePlayersStore';
+import { PlayerRole, PlayerType } from '@/data/types';
 
 // This component ensures proper game state initialization
 export default function GameStateInitializer() {

@@ -1,14 +1,16 @@
-'use client';
+// src/components/GameLog.tsx
+// This is based on the version you provided.
+// Ensure useLoggerStore, LogLevel, LogEntry, and setDebug action are correctly defined in @/utils/logger.
 
-// components/GameLog.tsx
+'use client';
 import React, { useEffect, useRef } from 'react';
-import { useLoggerStore, LogLevel, LogEntry } from '@/utils/logger'; // Import LogEntry
-import { useGameFlowStore } from '@/stores/useGameFlowStore';
+import { useLoggerStore, LogLevel, LogEntry } from '@/utils/logger'; // Ensure path and exports are correct
+import { useGameFlowStore } from '@/stores/useGameFlowStore'; // gameLog from here is not rendered, but kept from original
 
 interface GameLogProps {
   maxHeight?: string;
   showTimestamps?: boolean;
-  enableDevMode?: boolean;
+  enableDevMode?: boolean; // This prop controls the view mode
 }
 
 const GameLog: React.FC<GameLogProps> = ({ 
@@ -16,166 +18,139 @@ const GameLog: React.FC<GameLogProps> = ({
   showTimestamps = false,
   enableDevMode = false
 }) => {
-  // Get all logs from the centralized logger
   const allLogs = useLoggerStore(state => state.logs);
-  const setDebug = useLoggerStore(state => state.setDebug); // Corrected store action name
-  // const debugMode = useLoggerStore(state => state.debugMode); // This seems unused, enableDevMode prop is used instead
+  // Assuming 'setDebug' is the correct action name in your useLoggerStore
+  const setDebugInStore = useLoggerStore(state => state.setDebug); 
 
-  // Filter logs for user-facing view (e.g., INFO level and above)
   const userFacingLogs = allLogs.filter(log =>
     log.level === LogLevel.INFO || log.level === LogLevel.WARNING || log.level === LogLevel.ERROR
   );
 
-  // Also get gameLog from gameFlowStore for backward compatibility (currently unused in rendering logic)
-  const gameFlowLogs = useGameFlowStore(state => state.gameLog);
+  // gameFlowLogs from useGameFlowStore is fetched but not used in this rendering logic.
+  // const gameFlowLogs = useGameFlowStore(state => state.gameLog); 
   
-  // Reference to auto-scroll container
   const logEndRef = useRef<HTMLDivElement>(null);
   
-  // Auto-scroll to bottom when logs update
   useEffect(() => {
     if (logEndRef.current) {
       logEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [allLogs]); // Scroll only when allLogs update
+  }, [allLogs]);
 
-  // Toggle debug mode in the store based on the prop
   useEffect(() => {
-    // Assuming setDebug is now correctly defined in the store
-    setDebug(enableDevMode);
-  }, [enableDevMode, setDebug]);
-
-  // Note: The error "Property 'setDebugMode' does not exist on type 'LoggerState'" 
-  // indicates that the 'setDebugMode' action needs to be defined within your 
-  // Zustand store configuration in '@/utils/logger'. You'll need to add 
-  // 'setDebugMode: (mode: boolean) => void;' to the state interface and implement 
-  // 'setDebugMode: (mode) => set({ debugMode: mode })' in the store creator.
+    if (setDebugInStore) { // Check if the action exists
+        setDebugInStore(enableDevMode);
+    }
+  }, [enableDevMode, setDebugInStore]);
 
   return (
-    <div className="game-log-container">
+    <div className="game-log-container p-2 bg-slate-850 rounded-md border border-slate-700 h-full flex flex-col"> {/* Added styling context */}
       <div 
-        className="game-log" 
+        className="game-log flex-grow" 
         style={{ 
-          maxHeight, 
+          maxHeight: `calc(${maxHeight} - 2rem)`, // Adjust if header is present
           overflowY: 'auto',
-          border: '1px solid #ccc',
-          borderRadius: '4px',
-          padding: '12px',
-          backgroundColor: enableDevMode ? '#f8f8f8' : 'white'
+          // Removed inline border, bg, padding to inherit or use Tailwind from parent
         }}
       >
         {enableDevMode ? (
-          // Developer mode with detailed logs
           <>
-            <div className="log-header" style={{ marginBottom: '8px', fontWeight: 'bold' }}>
-              Developer Log ({allLogs.length} entries)
+            <div className="log-header mb-2 font-semibold text-slate-300 text-sm">
+              Developer Log ({allLogs.length})
             </div>
             {allLogs.map((log, index) => (
               <div 
                 key={index} 
-                className={`log-entry log-level-${log.level}`}
-                style={{
-                  marginBottom: '4px',
-                  padding: '4px',
-                  borderLeft: `3px solid ${getLogLevelColor(log.level)}`,
-                  fontSize: '0.9rem'
-                }}
+                className={`log-entry log-level-${LogLevel[log.level]?.toLowerCase()} mb-1 p-1 text-xs border-l-2 ${getLogLevelBorderStyle(log.level)}`}
               >
                 {showTimestamps && (
-                  <span className="log-timestamp" style={{ color: '#888', marginRight: '8px' }}>
-                    {new Date(log.timestamp).toLocaleTimeString()}
+                  <span className="log-timestamp text-slate-500 mr-2">
+                    {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                   </span>
                 )}
-                <span className="log-category" style={{ 
-                  backgroundColor: getCategoryColor(log.category),
-                  color: 'white',
-                  padding: '2px 4px',
-                  marginRight: '6px',
-                  fontSize: '0.8rem' // Added font size for consistency
-                }}>
-                  {log.category || 'General'} {/* Display category */}
+                {log.category && (
+                  <span className="log-category font-medium mr-1.5" style={{ color: getCategoryColor(log.category) }}>
+                    [{log.category}]
+                  </span>
+                )}
+                <span className="log-message" style={{color: getLogLevelTextColor(log.level)}}>
+                    {log.message}
                 </span>
-                {/* Display the message part of the log entry */}
-                {log.message}
+                {log.data && <pre className="text-xs text-slate-600 bg-slate-900 p-1 mt-1 rounded overflow-x-auto">{JSON.stringify(log.data, null, 2)}</pre>}
               </div>
             ))}
           </>
         ) : (
-          // User-facing logs (simpler display)
           <>
-            <div className="log-header" style={{ marginBottom: '8px', fontWeight: 'bold' }}>
-              Game Log
+            <div className="log-header mb-2 font-semibold text-slate-300 text-sm">
+              Game Events
             </div>
-            {/* Map over the filtered userFacingLogs */}
+            {userFacingLogs.length === 0 && <p className="text-slate-500 italic text-xs">No game events yet.</p>}
             {userFacingLogs.map((log: LogEntry, index: number) => (
               <div
                 key={index}
-                className="log-entry"
-                style={{
-                  marginBottom: '4px',
-                  padding: '4px',
-                }}
+                className="log-entry mb-1 p-1 text-xs"
+                style={{ color: getLogLevelTextColor(log.level) }}
               >
-                {/* Display the message part of the log entry */}
+                {showTimestamps && (
+                  <span className="log-timestamp text-slate-500 mr-2">
+                    {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                )}
                 {log.message}
               </div>
             ))}
           </>
         )}
-        <div ref={logEndRef} /> {/* Scroll target */}
-      </div> {/* Close game-log div */}
+        <div ref={logEndRef} />
+      </div>
       
-      {/* Optional debug mode toggle for development */}
       {process.env.NODE_ENV === 'development' && (
-        <div className="debug-controls" style={{ marginTop: '8px' }}>
-          <label>
+        <div className="debug-controls mt-2 pt-2 border-t border-slate-700">
+          <label className="flex items-center text-xs text-slate-400">
             <input 
               type="checkbox" 
+              className="mr-2 accent-sky-500"
               checked={enableDevMode} 
-              // Assuming setDebug is correctly defined and passed down if needed,
-              // but this component receives enableDevMode as a prop and uses useEffect to set it.
-              // If direct control via checkbox is desired, a handler prop should be passed down.
-              // For now, keeping the direct call, assuming setDebug is available.
-              onChange={(e) => setDebug(e.target.checked)} 
+              onChange={(e) => setDebugInStore(e.target.checked)} 
             />
-            Developer Mode
+            Show Developer Logs
           </label>
-          {/* Add button element */}
-          <button
-              onClick={() => window.open('/debug-logs', '_blank')}
-              style={{
-                marginLeft: '12px',
-                padding: '4px 8px',
-                fontSize: '0.8rem'
-              }}
-            >
-              Open Log Explorer
-            </button>
         </div>
       )}
     </div>
   );
 };
 
-// Utility functions for log styling
-const getLogLevelColor = (level: LogLevel): string => {
+const getLogLevelBorderStyle = (level: LogLevel): string => {
   switch (level) {
-    case LogLevel.DEBUG: return '#6c757d';  // Gray
-    case LogLevel.INFO: return '#17a2b8';   // Teal
-    case LogLevel.WARNING: return '#ffc107';   // Yellow
-    case LogLevel.ERROR: return '#dc3545';  // Red
-    default: return '#6c757d';       // Default gray
+    case LogLevel.DEBUG: return 'border-slate-500';
+    case LogLevel.INFO: return 'border-blue-500';
+    case LogLevel.WARNING: return 'border-amber-500';
+    case LogLevel.ERROR: return 'border-red-500';
+    default: return 'border-slate-600';
+  }
+};
+const getLogLevelTextColor = (level: LogLevel): string => {
+  switch (level) {
+    case LogLevel.DEBUG: return '#94a3b8';  // slate-400
+    case LogLevel.INFO: return '#60a5fa';   // blue-400
+    case LogLevel.WARNING: return '#facc15'; // yellow-400
+    case LogLevel.ERROR: return '#f87171';   // red-400
+    default: return '#94a3b8'; 
   }
 };
 
 const getCategoryColor = (category: string = ''): string => {
-  switch (category) {
-    case 'GameFlow': return '#007bff';  // Blue
-    case 'Players': return '#28a745';   // Green
-    case 'Cards': return '#fd7e14';     // Orange
-    case 'Floors': return '#6f42c1';    // Purple
-    case 'Building': return '#e83e8c';  // Pink
-    default: return '#6c757d';          // Default gray
+  // Consistent with Lucide icon colors for roles
+  switch (category.toLowerCase()) {
+    case 'gameflow': return '#38bdf8';   // sky-400
+    case 'players': return '#34d399';  // emerald-400
+    case 'cards': return '#fb923c';     // orange-400
+    case 'floors': return '#a78bfa';    // violet-400
+    case 'building': return '#f472b6';  // pink-400
+    case 'ai': return '#c084fc';        // purple-400
+    default: return '#94a3b8';       // slate-400
   }
 };
 

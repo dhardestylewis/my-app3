@@ -1,7 +1,7 @@
 // hooks/useLogger.ts
 import { useCallback } from 'react';
 import { useLoggerStore } from '@/stores/loggerStore';
-import { LogLevel } from '@/stores/loggerStore';
+import { LogLevel } from '@/data/types';
 
 /**
  * Custom hook to provide easy access to logging functions with a specific category
