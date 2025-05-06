@@ -5,7 +5,7 @@
 import React, { FC, useCallback } from 'react';
 import { usePlayersStore, Player } from '@/stores/usePlayersStore';
 import { useFloorStore } from '@/stores/useFloorStore'; // F.4: Import useFloorStore
-import CardComponent from './ui/Card'; 
+import CardComponent from '@/components/ui/Card'; 
 import { CardDefinition, CardData } from '@/data/types'; // CardData might be used for casting
 import { logDebug, logError } from '@/utils/logger';
 import { X, PackagePlus, Layers, Info } from 'lucide-react';
